@@ -44,14 +44,18 @@ instance Applicative (FoldP_ b e) where
         bifurcate fs as = Exhaustive (\producer -> do
             (outbox1,inbox1,seal1) <- spawn' (bounded 1)
             (outbox2,inbox2,seal2) <- spawn' (bounded 1)
-            runConceit (liftA2 (,)
-                (Conceit (fs (fromInput inbox1) `finally` atomically seal1) 
-                 <*>
-                 Conceit (as (fromInput inbox2) `finally` atomically seal2))
-                (_Conceit (runEffect (do 
-                      producer >-> Pipes.tee (toOutput outbox1 >> Pipes.drain) 
-                               >->           (toOutput outbox2 >> Pipes.drain))   
-                      `finally` atomically seal1 `finally` atomically seal2))))
+            runConceit $
+                (\f x r -> (f x,r))
+                <$>
+                Conceit (fs (fromInput inbox1) `finally` atomically seal1)
+                <*>
+                Conceit (as (fromInput inbox2) `finally` atomically seal2)
+                <*>
+                (_Conceit $
+                    (runEffect (producer >-> Pipes.tee (toOutput outbox1 >> Pipes.drain) 
+                                         >->           (toOutput outbox2 >> Pipes.drain)))
+                    `finally` atomically seal1 
+                    `finally` atomically seal2))
 
 
 nonexhaustive :: FoldP_ b e a -> Producer b IO () -> IO (Either e a)
