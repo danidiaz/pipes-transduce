@@ -35,9 +35,10 @@ Library
         comonad       == 4.*               ,
         free          == 4.*               ,         
         pipes         == 4.*               ,
+        pipes-concurrency >= 2.0.2 && < 3  ,
         monoid-subclasses == 0.4.*         ,
         void          >= 0.6      && < 1.0 ,
-        conceit       >= 0.3.2.0  && < 0.4.0.0,
+        conceit       >= 0.3.2.0  && < 0.4.0.0
     Exposed-Modules:
         Control.Foldl.Transduce.Pipes
         Control.Foldl.Transduce.Pipes.Internal
