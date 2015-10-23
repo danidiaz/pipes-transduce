@@ -161,7 +161,7 @@ splitP f t = case t of
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
 transduceP :: TransducerP b e a -> FoldP a e r -> FoldP b e r
-transduceP = undefined
+transduceP f (FoldP (unLift -> s)) = undefined
 
 
 
