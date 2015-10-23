@@ -16,6 +16,7 @@ module Control.Foldl.Transduce.Pipes.Internal (
     ,   transducerP
     ,   fallibleTransducerP
     ,   splitP
+    ,   transduceP
     ) where
 
 import Data.Bifunctor
@@ -158,5 +159,10 @@ splitP f t = case t of
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
     SplittingE g -> SplittingE (f . Pipes.concats . g)
+
+transduceP :: TransducerP b e a -> FoldP a e r -> FoldP b e r
+transduceP = undefined
+
+
 
 

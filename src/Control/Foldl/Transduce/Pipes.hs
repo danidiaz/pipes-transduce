@@ -10,6 +10,7 @@
     ,   transducerP
     ,   fallibleTransducerP
     ,   splitP
+    ,   transduceP
     ) where
 
 import Control.Foldl.Transduce.Pipes.Internal 
