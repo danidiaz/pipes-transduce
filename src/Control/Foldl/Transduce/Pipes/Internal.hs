@@ -7,11 +7,15 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Control.Foldl.Transduce.Pipes.Internal (
-        FoldP
+        FoldP(..)
     ,   foldP
     ,   premapP
     ,   premapFoldableP
     ,   premapEnumerableP
+    ,   TransducerP(..)
+    ,   transducerP
+    ,   fallibleTransducerP
+    ,   splitP
     ) where
 
 import Data.Bifunctor
@@ -20,12 +24,14 @@ import Control.Applicative
 import Control.Applicative.Lift
 import Control.Monad
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Free hiding (Pure)
 import qualified Control.Foldl as Foldl
 import Control.Concurrent
 import Control.Concurrent.Conceit
 import Control.Exception
 import Pipes 
 import qualified Pipes.Prelude as Pipes
+import qualified Pipes.Group as Pipes
 import Pipes.Concurrent
 
 newtype FoldP b e a = FoldP (Lift (FoldP_ b e) a) deriving (Functor)
@@ -123,5 +129,34 @@ premapFoldableP unwinder = premapEnumerableP (Select . each . unwinder)
 premapEnumerableP :: Enumerable t => (a -> t IO b) -> FoldP b e r -> FoldP a e r 
 premapEnumerableP unwinder s = 
     FoldP (Other (ExhaustiveCont (foldP s . flip for (enumerate . toListT . unwinder))))
+
+data TransducerP b e a = 
+      P2P (forall r. Producer b IO r -> Producer a IO r)
+    | P2PE (forall r. Producer b IO r -> Producer a IO (Either e r))
+    | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
+    | SplittingE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
+
+instance Functor (TransducerP b e) where
+  fmap = second
+
+instance Bifunctor (TransducerP b) where
+  bimap f g s = case s of
+      P2P x -> P2P (\producer -> for (x producer) (Pipes.yield . g))
+      P2PE x -> P2PE (\producer -> liftM (first f) (for (x producer) (Pipes.yield . g)))
+      Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
+      SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
+
+transducerP :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
+transducerP = P2P
+
+fallibleTransducerP :: (forall r. Producer b IO r -> Producer a IO (Either e r)) -> TransducerP b e a
+fallibleTransducerP = P2PE
+
+splitP :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
+splitP f t = case t of
+    P2P g -> Splitting (f . g)
+    P2PE g -> SplittingE (f . g)
+    Splitting g -> Splitting (f . Pipes.concats . g)
+    SplittingE g -> SplittingE (f . Pipes.concats . g)
 
 

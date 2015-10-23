@@ -36,6 +36,7 @@ Library
         free          == 4.*               ,         
         pipes         == 4.*               ,
         pipes-concurrency >= 2.0.2 && < 3  ,
+        pipes-group >= 1.0.1               ,
         monoid-subclasses == 0.4.*         ,
         void          >= 0.6      && < 1.0 ,
         conceit       >= 0.3.2.0  && < 0.4.0.0
