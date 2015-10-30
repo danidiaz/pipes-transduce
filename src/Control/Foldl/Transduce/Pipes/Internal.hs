@@ -110,6 +110,9 @@ exhaustiveCont s = case s of
                 (runEffect (producer >-> (toOutput outbox *> Pipes.drain)) 
                 `finally` atomically seal))
 
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+
 foldP :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
 foldP (FoldP (unLift -> s)) = exhaustiveCont s
 
