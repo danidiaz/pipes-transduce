@@ -1,19 +1,19 @@
-﻿module Control.Foldl.Transduce.Pipes (
+﻿module Pipes.Transduce (
         -- * Producer folds
-        FoldP
-    ,   foldP
-    ,   premapP
-    ,   premapFoldableP
-    ,   premapEnumerableP
-        -- * Transducers
-    ,   TransducerP
-    ,   transduceP
-    ,   transducerP
-    ,   fallibleTransducerP
-    ,   splitP
+--        FoldP
+--    ,   foldP
+--    ,   premapP
+--    ,   premapFoldableP
+--    ,   premapEnumerableP
+--        -- * Transducers
+--    ,   TransducerP
+--    ,   transduceP
+--    ,   transducerP
+--    ,   fallibleTransducerP
+--    ,   splitP
     ) where
 
-import Control.Foldl.Transduce.Pipes.Internal 
+import Pipes.Transduce.Internal 
 
 
 

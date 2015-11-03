@@ -6,17 +6,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Control.Foldl.Transduce.Pipes.Internal (
+module Pipes.Transduce.Internal (
         FoldP(..)
-    ,   foldP
-    ,   premapP
-    ,   premapFoldableP
-    ,   premapEnumerableP
-    ,   TransducerP(..)
-    ,   transducerP
-    ,   fallibleTransducerP
-    ,   splitP
-    ,   transduceP
+    ,   fold
+--    ,   premapP
+--    ,   premapFoldableP
+--    ,   premapEnumerableP
+--    ,   TransducerP(..)
+    ,   transducer
+    ,   fallibleTransducer
+    ,   delimit
+    ,   transduce
     ) where
 
 import Data.Bifunctor
@@ -113,27 +113,27 @@ exhaustiveCont s = case s of
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 
-foldP :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
-foldP (FoldP (unLift -> s)) = exhaustiveCont s
+fold :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
+fold (FoldP (unLift -> s)) = exhaustiveCont s
 
-premapP :: (a -> b) -> FoldP b e r -> FoldP a e r 
-premapP f (FoldP s) = FoldP $ case s of
-    Pure p -> Pure p
-    Other o -> Other $ case o of
-        TrueFold e -> TrueFold $ Foldl.premapM f e
-        ExhaustiveCont e -> ExhaustiveCont $ \producer ->
-            e $ producer >-> Pipes.map f
-        NonexhaustiveCont ne -> NonexhaustiveCont $ \producer ->
-            ne $ producer >-> Pipes.map f
-
-premapFoldableP :: Foldable f => (a -> f b) -> FoldP b e r -> FoldP a e r 
--- could be more efficient for TrueFold
-premapFoldableP unwinder = premapEnumerableP (Select . each . unwinder)
-
-premapEnumerableP :: Enumerable t => (a -> t IO b) -> FoldP b e r -> FoldP a e r 
-premapEnumerableP unwinder s = 
-    FoldP (Other (ExhaustiveCont (foldP s . flip for (enumerate . toListT . unwinder))))
-
+--premapP :: (a -> b) -> FoldP b e r -> FoldP a e r 
+--premapP f (FoldP s) = FoldP $ case s of
+--    Pure p -> Pure p
+--    Other o -> Other $ case o of
+--        TrueFold e -> TrueFold $ Foldl.premapM f e
+--        ExhaustiveCont e -> ExhaustiveCont $ \producer ->
+--            e $ producer >-> Pipes.map f
+--        NonexhaustiveCont ne -> NonexhaustiveCont $ \producer ->
+--            ne $ producer >-> Pipes.map f
+--
+--premapFoldableP :: Foldable f => (a -> f b) -> FoldP b e r -> FoldP a e r 
+---- could be more efficient for TrueFold
+--premapFoldableP unwinder = premapEnumerableP (Select . each . unwinder)
+--
+--premapEnumerableP :: Enumerable t => (a -> t IO b) -> FoldP b e r -> FoldP a e r 
+--premapEnumerableP unwinder s = 
+--    FoldP (Other (ExhaustiveCont (foldP s . flip for (enumerate . toListT . unwinder))))
+--
 data TransducerP b e a = 
       P2P (forall r. Producer b IO r -> Producer a IO r)
     | P2PE (forall r. Producer b IO r -> Producer a IO (Either e r))
@@ -150,21 +150,21 @@ instance Bifunctor (TransducerP b) where
       Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
       SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
 
-transducerP :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
-transducerP = P2P
+transducer :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
+transducer = P2P
 
-fallibleTransducerP :: (forall r. Producer b IO r -> Producer a IO (Either e r)) -> TransducerP b e a
-fallibleTransducerP = P2PE
+fallibleTransducer :: (forall r. Producer b IO r -> Producer a IO (Either e r)) -> TransducerP b e a
+fallibleTransducer = P2PE
 
-splitP :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
-splitP f t = case t of
+delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
+delimit f t = case t of
     P2P g -> Splitting (f . g)
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
-transduceP :: TransducerP b e a -> FoldP a e r -> FoldP b e r
-transduceP f (FoldP (unLift -> s)) = undefined
+transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
+transduce f (FoldP (unLift -> s)) = undefined
 
 
 
