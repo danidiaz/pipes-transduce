@@ -8,6 +8,7 @@
 
 module Pipes.Transduce.Internal (
         FoldP(..)
+    ,   foldFallibly
     ,   fold
     ,   TransducerP(..)
     ,   mapper 
@@ -22,6 +23,7 @@ module Pipes.Transduce.Internal (
 
 import Data.Bifunctor
 import Data.Monoid
+import Data.Void
 import Control.Applicative
 import Control.Applicative.Lift
 import Control.Monad
@@ -114,8 +116,11 @@ exhaustiveCont s = case s of
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 
-fold :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
-fold (FoldP (unLift -> s)) = exhaustiveCont s
+foldFallibly :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
+foldFallibly (FoldP (unLift -> s)) = exhaustiveCont s
+
+fold :: FoldP b Void a -> Producer b IO r -> IO (a,r)
+fold (FoldP (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
 --premapP :: (a -> b) -> FoldP b e r -> FoldP a e r 
 --premapP f (FoldP s) = FoldP $ case s of
