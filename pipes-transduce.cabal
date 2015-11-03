@@ -1,4 +1,4 @@
-Name: foldl-transduce-pipes
+Name: pipes-transduce
 Version: 0.1.0.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
@@ -7,7 +7,7 @@ License-File: LICENSE
 Copyright: 2015 Daniel Diaz
 Author: Daniel Diaz
 Maintainer: diaz_carrete@yahoo.com
-Bug-Reports: https://github.com/danidiaz/foldl-transduce-pipes/issues
+Bug-Reports: https://github.com/danidiaz/pipes-transduce/issues
 Synopsis: Interfacing pipes with foldl folds.
 Description: Grab-bag of functions for interfacing pipes with foldl folds.
 Category: Control
