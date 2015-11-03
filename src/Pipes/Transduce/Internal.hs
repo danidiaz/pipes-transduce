@@ -9,10 +9,11 @@
 module Pipes.Transduce.Internal (
         FoldP(..)
     ,   fold
---    ,   premapP
---    ,   premapFoldableP
---    ,   premapEnumerableP
---    ,   TransducerP(..)
+    ,   TransducerP(..)
+    ,   mapper 
+    ,   fallibleMapper 
+    ,   mapperFoldable 
+    ,   mapperEnumerable 
     ,   transducer
     ,   fallibleTransducer
     ,   delimit
@@ -134,8 +135,10 @@ fold (FoldP (unLift -> s)) = exhaustiveCont s
 --premapEnumerableP unwinder s = 
 --    FoldP (Other (ExhaustiveCont (foldP s . flip for (enumerate . toListT . unwinder))))
 --
+
 data TransducerP b e a = 
-      P2P (forall r. Producer b IO r -> Producer a IO r)
+      Mapper (b -> a)
+    | P2P (forall r. Producer b IO r -> Producer a IO r)
     | P2PE (forall r. Producer b IO r -> Producer a IO (Either e r))
     | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
     | SplittingE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
@@ -145,10 +148,23 @@ instance Functor (TransducerP b e) where
 
 instance Bifunctor (TransducerP b) where
   bimap f g s = case s of
+      Mapper x -> Mapper (g . x)
       P2P x -> P2P (\producer -> for (x producer) (Pipes.yield . g))
       P2PE x -> P2PE (\producer -> liftM (first f) (for (x producer) (Pipes.yield . g)))
       Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
       SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
+
+mapper :: (a -> b) -> TransducerP b e a
+mapper = undefined
+
+fallibleMapper :: (a -> Either e b) -> TransducerP b e a
+fallibleMapper = undefined
+
+mapperFoldable :: Foldable f => (a -> f b) -> TransducerP b e a
+mapperFoldable = undefined
+
+mapperEnumerable :: Foldable f => (a -> f b) -> TransducerP b e a
+mapperEnumerable = undefined
 
 transducer :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
 transducer = P2P
@@ -158,6 +174,7 @@ fallibleTransducer = P2PE
 
 delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
 delimit f t = case t of
+    Mapper f -> undefined
     P2P g -> Splitting (f . g)
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
