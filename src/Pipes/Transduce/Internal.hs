@@ -143,6 +143,7 @@ fold (FoldP (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
 data TransducerP b e a = 
       Mapper (b -> a)
+    | Folder (b -> [a])
     | P2P (forall r. Producer b IO r -> Producer a IO r)
     | P2PE (forall r. Producer b IO r -> Producer a IO (Either e r))
     | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
@@ -154,6 +155,7 @@ instance Functor (TransducerP b e) where
 instance Bifunctor (TransducerP b) where
   bimap f g s = case s of
       Mapper x -> Mapper (g . x)
+      Folder x -> Folder (fmap g . x)
       P2P x -> P2P (\producer -> for (x producer) (Pipes.yield . g))
       P2PE x -> P2PE (\producer -> liftM (first f) (for (x producer) (Pipes.yield . g)))
       Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
@@ -180,6 +182,7 @@ fallibleTransducer = P2PE
 delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
 delimit f t = case t of
     Mapper f -> undefined
+    Folder f -> undefined
     P2P g -> Splitting (f . g)
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
