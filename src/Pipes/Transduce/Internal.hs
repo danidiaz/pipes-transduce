@@ -9,7 +9,7 @@
 module Pipes.Transduce.Internal (
         FoldP(..)
     ,   foldFallibly
-    ,   fold
+    ,   Pipes.Transduce.Internal.fold
     ,   TransducerP(..)
     ,   mapper 
     ,   fallibleMapper 
@@ -24,6 +24,7 @@ module Pipes.Transduce.Internal (
 import Data.Bifunctor
 import Data.Monoid
 import Data.Void
+import Data.Foldable
 import Control.Applicative
 import Control.Applicative.Lift
 import Control.Monad
@@ -34,6 +35,7 @@ import Control.Concurrent
 import Control.Concurrent.Conceit
 import Control.Exception
 import Pipes 
+import Pipes.Lift (distribute) 
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Group as Pipes
 import Pipes.Concurrent
@@ -161,17 +163,20 @@ instance Bifunctor (TransducerP b) where
       Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
       SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
 
-mapper :: (a -> b) -> TransducerP b e a
-mapper = undefined
+mapper :: (a -> b) -> TransducerP a e b
+mapper = Mapper
 
-fallibleMapper :: (a -> Either e b) -> TransducerP b e a
-fallibleMapper = undefined
+fallibleMapper :: (a -> Either e b) -> TransducerP a e b
+fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
+    case fallible a of
+        Left e -> lift (throwE e)
+        Right b -> Pipes.yield b)))
 
-mapperFoldable :: Foldable f => (a -> f b) -> TransducerP b e a
-mapperFoldable = undefined
+mapperFoldable :: Foldable f => (a -> f b) -> TransducerP a e b
+mapperFoldable f = Folder (toList . f)
 
-mapperEnumerable :: Foldable f => (a -> f b) -> TransducerP b e a
-mapperEnumerable = undefined
+mapperEnumerable :: Enumerable f => (a -> f IO b) -> TransducerP a e b
+mapperEnumerable enumerable = P2P (\producer -> for producer (enumerate . toListT . enumerable))
 
 transducer :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
 transducer = P2P
