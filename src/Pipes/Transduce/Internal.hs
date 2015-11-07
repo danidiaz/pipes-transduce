@@ -188,7 +188,7 @@ fallibleTransducer = P2PE
 delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
 delimit f t = case t of
     Mapper func -> Splitting (\producer -> f (producer >-> Pipes.Prelude.map func))
-    Folder func -> Splitting (\producer -> f (for producer (\a -> forM_ (func a) Pipes.yield)))
+    Folder func -> Splitting (\producer -> f (producer >-> mapFoldable func))
     P2P g -> Splitting (f . g)
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
