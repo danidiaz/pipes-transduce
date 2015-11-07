@@ -194,10 +194,10 @@ delimit f t = case t of
     Splitting g -> Splitting (f . Pipes.concats . g)
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
-transduce :: TransducerP b e a -> FoldP b e r -> FoldP a e r
+transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
 transduce (Mapper _) (FoldP (Pure x)) = FoldP (Pure x)
 transduce (Folder _) (FoldP (Pure x)) = FoldP (Pure x)
-transduce (Mapper f) (FoldP (Other (TrueFold x))) = undefined
+transduce (Mapper f) (FoldP (Other (TrueFold x))) = FoldP (Other (TrueFold (Foldl.premapM f x)))
 transduce (Folder f) (FoldP (Other (TrueFold x))) = undefined
 transduce f (FoldP (unLift -> s)) = undefined
 
