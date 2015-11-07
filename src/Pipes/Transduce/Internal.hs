@@ -40,6 +40,7 @@ import Pipes.Prelude
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Group as Pipes
 import Pipes.Concurrent
+import Lens.Family (folding)
 
 newtype FoldP b e a = FoldP (Lift (FoldP_ b e) a) deriving (Functor)
 
@@ -198,7 +199,7 @@ transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
 transduce (Mapper _) (FoldP (Pure x)) = FoldP (Pure x)
 transduce (Folder _) (FoldP (Pure x)) = FoldP (Pure x)
 transduce (Mapper f) (FoldP (Other (TrueFold x))) = FoldP (Other (TrueFold (Foldl.premapM f x)))
-transduce (Folder f) (FoldP (Other (TrueFold x))) = undefined
+transduce (Folder f) (FoldP (Other (TrueFold x))) = FoldP (Other (TrueFold (Foldl.handlesM (folding f) x)))
 transduce f (FoldP (unLift -> s)) = undefined
 
 
