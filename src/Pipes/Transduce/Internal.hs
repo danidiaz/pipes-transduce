@@ -220,9 +220,18 @@ transduce (P2P f) (FoldP (unLift -> s)) = case s of
 --
 transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
 --
-transduce (P2PE f) (FoldP (unLift -> s)) = case s of
-    TrueFold aTrueFold -> undefined
-    _ -> undefined
+transduce (P2PE f) (FoldP (unLift -> s)) = do
+    let exhaustive = exhaustiveCont s
+    FoldP (Other (ExhaustiveCont (\producer -> do
+        (outbox,inbox,seal) <- spawn' (bounded 1)
+        runConceit $ 
+            (\(r,()) r' -> (r,r'))
+            <$>
+            Conceit (exhaustive (fromInput inbox) `finally` atomically seal)
+            <*>
+            (Conceit $
+                (runEffect (f producer >-> (toOutput outbox *> Pipes.drain)) 
+                `finally` atomically seal)))))
 --
 transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
 
