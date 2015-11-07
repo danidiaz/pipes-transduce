@@ -196,11 +196,36 @@ delimit f t = case t of
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
 transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
-transduce (Mapper _) (FoldP (Pure x)) = FoldP (Pure x)
-transduce (Folder _) (FoldP (Pure x)) = FoldP (Pure x)
-transduce (Mapper f) (FoldP (Other (TrueFold x))) = FoldP (Other (TrueFold (Foldl.premapM f x)))
-transduce (Folder f) (FoldP (Other (TrueFold x))) = FoldP (Other (TrueFold (Foldl.handlesM (folding f) x)))
-transduce f (FoldP (unLift -> s)) = undefined
+transduce (Mapper _) (FoldP (Pure x)) = 
+    FoldP (Pure x)
+transduce (Mapper f) (FoldP (Other (TrueFold x))) = 
+    FoldP (Other (TrueFold (Foldl.premapM f x)))
+transduce (Mapper f) (FoldP (Other (ExhaustiveCont x))) = 
+    FoldP (Other (ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))))
+transduce (Mapper f) (FoldP (Other (NonexhaustiveCont x))) = 
+    FoldP (Other (NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))))
+--
+transduce (Folder _) (FoldP (Pure x)) = 
+    FoldP (Pure x)
+transduce (Folder f) (FoldP (Other (TrueFold x))) = 
+    FoldP (Other (TrueFold (Foldl.handlesM (folding f) x)))
+transduce (Folder f) (FoldP (Other (ExhaustiveCont x))) = 
+    FoldP (Other (ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))))
+transduce (Folder f) (FoldP (Other (NonexhaustiveCont x))) = 
+    FoldP (Other (NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))))
+--
+transduce (P2P f) (FoldP (unLift -> s)) = case s of
+    NonexhaustiveCont x -> FoldP (Other (NonexhaustiveCont (x . f)))
+    _ -> FoldP (Other (ExhaustiveCont (exhaustiveCont s . f)))
+--
+transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
+--
+transduce (P2PE f) (FoldP (unLift -> s)) = case s of
+    TrueFold aTrueFold -> undefined
+    _ -> undefined
+--
+transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
+
 
 
 
