@@ -126,25 +126,6 @@ foldFallibly (FoldP (unLift -> s)) = exhaustiveCont s
 fold :: FoldP b Void a -> Producer b IO r -> IO (a,r)
 fold (FoldP (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
---premapP :: (a -> b) -> FoldP b e r -> FoldP a e r 
---premapP f (FoldP s) = FoldP $ case s of
---    Pure p -> Pure p
---    Other o -> Other $ case o of
---        TrueFold e -> TrueFold $ Foldl.premapM f e
---        ExhaustiveCont e -> ExhaustiveCont $ \producer ->
---            e $ producer >-> Pipes.map f
---        NonexhaustiveCont ne -> NonexhaustiveCont $ \producer ->
---            ne $ producer >-> Pipes.map f
---
---premapFoldableP :: Foldable f => (a -> f b) -> FoldP b e r -> FoldP a e r 
----- could be more efficient for TrueFold
---premapFoldableP unwinder = premapEnumerableP (Select . each . unwinder)
---
---premapEnumerableP :: Enumerable t => (a -> t IO b) -> FoldP b e r -> FoldP a e r 
---premapEnumerableP unwinder s = 
---    FoldP (Other (ExhaustiveCont (foldP s . flip for (enumerate . toListT . unwinder))))
---
-
 data TransducerP b e a = 
       Mapper (b -> a)
     | Folder (b -> [a])
@@ -198,41 +179,31 @@ delimit f t = case t of
 transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
 transduce (Mapper _) (FoldP (Pure x)) = 
     FoldP (Pure x)
-transduce (Mapper f) (FoldP (Other (TrueFold x))) = 
-    FoldP (Other (TrueFold (Foldl.premapM f x)))
-transduce (Mapper f) (FoldP (Other (ExhaustiveCont x))) = 
-    FoldP (Other (ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))))
-transduce (Mapper f) (FoldP (Other (NonexhaustiveCont x))) = 
-    FoldP (Other (NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))))
---
+transduce (Mapper f) (FoldP (Other s)) = (FoldP (Other (case s of
+    TrueFold x -> TrueFold (Foldl.premapM f x)
+    ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))
+    NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f)))))
 transduce (Folder _) (FoldP (Pure x)) = 
     FoldP (Pure x)
-transduce (Folder f) (FoldP (Other (TrueFold x))) = 
-    FoldP (Other (TrueFold (Foldl.handlesM (folding f) x)))
-transduce (Folder f) (FoldP (Other (ExhaustiveCont x))) = 
-    FoldP (Other (ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))))
-transduce (Folder f) (FoldP (Other (NonexhaustiveCont x))) = 
-    FoldP (Other (NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))))
---
+transduce (Folder f) (FoldP (Other s)) = (FoldP (Other (case s of
+    TrueFold x -> TrueFold (Foldl.handlesM (folding f) x)
+    ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))
+    NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f)))))
 transduce (P2P f) (FoldP (unLift -> s)) = case s of
     NonexhaustiveCont x -> FoldP (Other (NonexhaustiveCont (x . f)))
     _ -> FoldP (Other (ExhaustiveCont (exhaustiveCont s . f)))
---
-transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
---
-transduce (P2PE f) (FoldP (unLift -> s)) = do
-    let exhaustive = exhaustiveCont s
+transduce (P2PE f) (FoldP (exhaustiveCont . unLift -> s)) = do
     FoldP (Other (ExhaustiveCont (\producer -> do
         (outbox,inbox,seal) <- spawn' (bounded 1)
         runConceit $ 
             (\(r,()) r' -> (r,r'))
             <$>
-            Conceit (exhaustive (fromInput inbox) `finally` atomically seal)
+            Conceit (s (fromInput inbox) `finally` atomically seal)
             <*>
             (Conceit $
                 (runEffect (f producer >-> (toOutput outbox *> Pipes.drain)) 
                 `finally` atomically seal)))))
---
+transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
 transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
 
 
