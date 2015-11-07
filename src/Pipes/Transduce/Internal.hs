@@ -36,6 +36,7 @@ import Control.Concurrent.Conceit
 import Control.Exception
 import Pipes 
 import Pipes.Lift (distribute) 
+import Pipes.Prelude
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Group as Pipes
 import Pipes.Concurrent
@@ -173,7 +174,7 @@ fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoi
         Right b -> Pipes.yield b)))
 
 mapperFoldable :: Foldable f => (a -> f b) -> TransducerP a e b
-mapperFoldable f = Folder (toList . f)
+mapperFoldable f = Folder (Data.Foldable.toList . f)
 
 mapperEnumerable :: Enumerable f => (a -> f IO b) -> TransducerP a e b
 mapperEnumerable enumerable = P2P (\producer -> for producer (enumerate . toListT . enumerable))
@@ -186,8 +187,8 @@ fallibleTransducer = P2PE
 
 delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
 delimit f t = case t of
-    Mapper f -> undefined
-    Folder f -> undefined
+    Mapper func -> Splitting (\producer -> f (producer >-> Pipes.Prelude.map func))
+    Folder func -> Splitting (\producer -> f (for producer (\a -> forM_ (func a) Pipes.yield)))
     P2P g -> Splitting (f . g)
     P2PE g -> SplittingE (f . g)
     Splitting g -> Splitting (f . Pipes.concats . g)
