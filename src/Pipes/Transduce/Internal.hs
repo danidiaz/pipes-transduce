@@ -118,7 +118,6 @@ exhaustiveCont s = case s of
                 `finally` atomically seal))
 
 ------------------------------------------------------------------------------
-------------------------------------------------------------------------------
 
 foldFallibly :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
 foldFallibly (FoldP (unLift -> s)) = exhaustiveCont s
