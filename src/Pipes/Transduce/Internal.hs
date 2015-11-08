@@ -6,20 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Pipes.Transduce.Internal (
-        FoldP(..)
-    ,   foldFallibly
-    ,   Pipes.Transduce.Internal.fold
-    ,   TransducerP(..)
-    ,   mapper 
-    ,   fallibleMapper 
-    ,   mapperFoldable 
-    ,   mapperEnumerable 
-    ,   transducer
-    ,   fallibleTransducer
-    ,   delimit
-    ,   transduce
-    ) where
+module Pipes.Transduce.Internal where
 
 import Data.Bifunctor
 import Data.Monoid
@@ -39,7 +26,9 @@ import Pipes.Lift (distribute)
 import Pipes.Prelude
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Group as Pipes
+import qualified Pipes.Parse
 import Pipes.Concurrent
+import Pipes.Safe (SafeT, runSafeT)
 import Lens.Family (folding)
 
 newtype FoldP b e a = FoldP (Lift (FoldP_ b e) a) deriving (Functor)
@@ -116,6 +105,88 @@ exhaustiveCont s = case s of
             (_Conceit $
                 (runEffect (producer >-> (toOutput outbox *> Pipes.drain)) 
                 `finally` atomically seal))
+
+
+fromFallibleCont 
+    :: (Producer b IO () -> IO (Either e a))
+    -> FoldP b e a 
+fromFallibleCont f = FoldP (Other (NonexhaustiveCont f))
+
+fromFallibleCont'  
+    :: (forall r. Producer b IO r -> IO (Either e (a,r))) 
+    -> FoldP b e a 
+fromFallibleCont' f = FoldP (Other (ExhaustiveCont f))
+
+fromCont :: (Producer b IO () -> IO a) -> FoldP b e a 
+fromCont aFold = fromFallibleCont $ fmap (fmap pure) $ aFold
+
+fromCont' :: (forall r. Producer b IO r -> IO (a,r)) -> FoldP b e a 
+fromCont' aFold = fromFallibleCont' $ fmap (fmap pure) aFold
+
+fromFold :: Foldl.Fold b a -> FoldP b e a 
+fromFold aFold = FoldP (Other (TrueFold (Foldl.generalize aFold)))
+
+fromFoldIO :: Foldl.FoldM IO b a -> FoldP b e a 
+fromFoldIO aFold = FoldP (Other (TrueFold (hoistFold lift aFold)))
+
+hoistFold :: Monad m => (forall a. m a -> n a) -> Foldl.FoldM m i r -> Foldl.FoldM n i r 
+hoistFold g (Foldl.FoldM step begin done) = Foldl.FoldM (\s i -> g (step s i)) (g begin) (g . done)
+
+fromFallibleFoldIO :: Foldl.FoldM (ExceptT e IO) b a -> FoldP b e a 
+fromFallibleFoldIO aFold = FoldP (Other (TrueFold aFold))
+
+fromFoldM 
+    :: MonadIO m 
+    => (forall r. m (a,r) -> IO (Either e (c,r))) 
+    -> Foldl.FoldM m b a 
+    -> FoldP b e c 
+fromFoldM whittle aFoldM = fromFallibleCont' $ \producer -> 
+    whittle $ Foldl.impurely Pipes.Prelude.foldM' aFoldM (hoist liftIO producer)
+
+fromConsumer :: Consumer b IO () -> FoldP b e ()
+fromConsumer consumer = fromCont $ \producer -> runEffect $ producer >-> consumer 
+
+fromConsumer' :: Consumer b IO Void -> FoldP b e ()
+fromConsumer' consumer = fromCont' $ \producer -> fmap ((,) ()) $ runEffect $ producer >-> fmap absurd consumer 
+
+fromConsumerM :: MonadIO m 
+              => (m () -> IO (Either e a)) 
+              -> Consumer b m () 
+              -> FoldP b e a
+fromConsumerM whittle consumer = fromFallibleCont $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> consumer 
+
+fromConsumerM' :: MonadIO m 
+               => (forall r. m r -> IO (Either e (a,r))) 
+               -> Consumer b m Void
+               -> FoldP b e a
+fromConsumerM' whittle consumer = fromFallibleCont' $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> fmap absurd consumer 
+
+fromSafeConsumer :: Consumer b (SafeT IO) Void -> FoldP b e ()
+fromSafeConsumer = fromConsumerM' (fmap (\r -> Right ((),r)) . runSafeT)
+
+fromFallibleConsumer :: Consumer b (ExceptT e IO) Void -> FoldP b e ()
+fromFallibleConsumer = fromConsumerM' (fmap (fmap (\r -> ((), r))) . runExceptT)
+
+
+fromParser :: Pipes.Parse.Parser b IO (Either e a) -> FoldP b e a 
+fromParser parser = fromFallibleCont' $ \producer -> drainage $ Pipes.Parse.runStateT parser producer
+  where
+    drainage m = do 
+        (a,leftovers) <- m
+        r <- runEffect (leftovers >-> Pipes.Prelude.drain)
+        case a of
+            Left e -> return (Left e)
+            Right a' -> return (Right (a',r)) 
+
+fromParserM :: MonadIO m 
+            => (forall r. m (a,r) -> IO (Either e (c,r))) 
+            -> Pipes.Parse.Parser b m a -> FoldP b e c 
+fromParserM f parser = fromFallibleCont' $ \producer -> f $ drainage $ (Pipes.Parse.runStateT parser) (hoist liftIO producer)
+  where
+    drainage m = do 
+        (a,leftovers) <- m
+        r <- runEffect (leftovers >-> Pipes.Prelude.drain)
+        return (a,r)
 
 ------------------------------------------------------------------------------
 
