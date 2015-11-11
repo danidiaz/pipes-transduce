@@ -107,69 +107,69 @@ exhaustiveCont s = case s of
                 `finally` atomically seal))
 
 
-fromFallibleCont 
+withFallibleCont 
     :: (Producer b IO () -> IO (Either e a))
     -> FoldP b e a 
-fromFallibleCont f = FoldP (Other (NonexhaustiveCont f))
+withFallibleCont f = FoldP (Other (NonexhaustiveCont f))
 
-fromFallibleCont'  
+withFallibleCont'  
     :: (forall r. Producer b IO r -> IO (Either e (a,r))) 
     -> FoldP b e a 
-fromFallibleCont' f = FoldP (Other (ExhaustiveCont f))
+withFallibleCont' f = FoldP (Other (ExhaustiveCont f))
 
-fromCont :: (Producer b IO () -> IO a) -> FoldP b e a 
-fromCont aFold = fromFallibleCont $ fmap (fmap pure) $ aFold
+withCont :: (Producer b IO () -> IO a) -> FoldP b e a 
+withCont aFold = withFallibleCont $ fmap (fmap pure) $ aFold
 
-fromCont' :: (forall r. Producer b IO r -> IO (a,r)) -> FoldP b e a 
-fromCont' aFold = fromFallibleCont' $ fmap (fmap pure) aFold
+withCont' :: (forall r. Producer b IO r -> IO (a,r)) -> FoldP b e a 
+withCont' aFold = withFallibleCont' $ fmap (fmap pure) aFold
 
-fromFold :: Foldl.Fold b a -> FoldP b e a 
-fromFold aFold = FoldP (Other (TrueFold (Foldl.generalize aFold)))
+withFold :: Foldl.Fold b a -> FoldP b e a 
+withFold aFold = FoldP (Other (TrueFold (Foldl.generalize aFold)))
 
-fromFoldIO :: Foldl.FoldM IO b a -> FoldP b e a 
-fromFoldIO aFold = FoldP (Other (TrueFold (hoistFold lift aFold)))
+withFoldIO :: Foldl.FoldM IO b a -> FoldP b e a 
+withFoldIO aFold = FoldP (Other (TrueFold (hoistFold lift aFold)))
 
 hoistFold :: Monad m => (forall a. m a -> n a) -> Foldl.FoldM m i r -> Foldl.FoldM n i r 
 hoistFold g (Foldl.FoldM step begin done) = Foldl.FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
-fromFallibleFoldIO :: Foldl.FoldM (ExceptT e IO) b a -> FoldP b e a 
-fromFallibleFoldIO aFold = FoldP (Other (TrueFold aFold))
+withFallibleFoldIO :: Foldl.FoldM (ExceptT e IO) b a -> FoldP b e a 
+withFallibleFoldIO aFold = FoldP (Other (TrueFold aFold))
 
-fromFoldM 
+withFoldM 
     :: MonadIO m 
     => (forall r. m (a,r) -> IO (Either e (c,r))) 
     -> Foldl.FoldM m b a 
     -> FoldP b e c 
-fromFoldM whittle aFoldM = fromFallibleCont' $ \producer -> 
+withFoldM whittle aFoldM = withFallibleCont' $ \producer -> 
     whittle $ Foldl.impurely Pipes.Prelude.foldM' aFoldM (hoist liftIO producer)
 
-fromConsumer :: Consumer b IO () -> FoldP b e ()
-fromConsumer consumer = fromCont $ \producer -> runEffect $ producer >-> consumer 
+withConsumer :: Consumer b IO () -> FoldP b e ()
+withConsumer consumer = withCont $ \producer -> runEffect $ producer >-> consumer 
 
-fromConsumer' :: Consumer b IO Void -> FoldP b e ()
-fromConsumer' consumer = fromCont' $ \producer -> fmap ((,) ()) $ runEffect $ producer >-> fmap absurd consumer 
+withConsumer' :: Consumer b IO Void -> FoldP b e ()
+withConsumer' consumer = withCont' $ \producer -> fmap ((,) ()) $ runEffect $ producer >-> fmap absurd consumer 
 
-fromConsumerM :: MonadIO m 
+withConsumerM :: MonadIO m 
               => (m () -> IO (Either e a)) 
               -> Consumer b m () 
               -> FoldP b e a
-fromConsumerM whittle consumer = fromFallibleCont $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> consumer 
+withConsumerM whittle consumer = withFallibleCont $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> consumer 
 
-fromConsumerM' :: MonadIO m 
+withConsumerM' :: MonadIO m 
                => (forall r. m r -> IO (Either e (a,r))) 
                -> Consumer b m Void
                -> FoldP b e a
-fromConsumerM' whittle consumer = fromFallibleCont' $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> fmap absurd consumer 
+withConsumerM' whittle consumer = withFallibleCont' $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> fmap absurd consumer 
 
-fromSafeConsumer :: Consumer b (SafeT IO) Void -> FoldP b e ()
-fromSafeConsumer = fromConsumerM' (fmap (\r -> Right ((),r)) . runSafeT)
+withSafeConsumer :: Consumer b (SafeT IO) Void -> FoldP b e ()
+withSafeConsumer = withConsumerM' (fmap (\r -> Right ((),r)) . runSafeT)
 
-fromFallibleConsumer :: Consumer b (ExceptT e IO) Void -> FoldP b e ()
-fromFallibleConsumer = fromConsumerM' (fmap (fmap (\r -> ((), r))) . runExceptT)
+withFallibleConsumer :: Consumer b (ExceptT e IO) Void -> FoldP b e ()
+withFallibleConsumer = withConsumerM' (fmap (fmap (\r -> ((), r))) . runExceptT)
 
 
-fromParser :: Pipes.Parse.Parser b IO (Either e a) -> FoldP b e a 
-fromParser parser = fromFallibleCont' $ \producer -> drainage $ Pipes.Parse.runStateT parser producer
+withParser :: Pipes.Parse.Parser b IO (Either e a) -> FoldP b e a 
+withParser parser = withFallibleCont' $ \producer -> drainage $ Pipes.Parse.runStateT parser producer
   where
     drainage m = do 
         (a,leftovers) <- m
@@ -178,10 +178,10 @@ fromParser parser = fromFallibleCont' $ \producer -> drainage $ Pipes.Parse.runS
             Left e -> return (Left e)
             Right a' -> return (Right (a',r)) 
 
-fromParserM :: MonadIO m 
+withParserM :: MonadIO m 
             => (forall r. m (a,r) -> IO (Either e (c,r))) 
             -> Pipes.Parse.Parser b m a -> FoldP b e c 
-fromParserM f parser = fromFallibleCont' $ \producer -> f $ drainage $ (Pipes.Parse.runStateT parser) (hoist liftIO producer)
+withParserM f parser = withFallibleCont' $ \producer -> f $ drainage $ (Pipes.Parse.runStateT parser) (hoist liftIO producer)
   where
     drainage m = do 
         (a,leftovers) <- m
