@@ -276,7 +276,20 @@ transduce (P2PE f) (FoldP (exhaustiveCont . unLift -> s)) = do
 transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
 transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
 
+groups :: (forall r. Producer b IO r -> Producer b' IO r) -> TransducerP a e b -> TransducerP a e b'
+groups f t = case t of
+    Mapper func -> P2P (f . (\producer -> producer >-> Pipes.Prelude.map func))
+    Folder func -> P2P (f . (\producer -> producer >-> mapFoldable func))
+    P2P g -> P2P (f . g)
+    P2PE g -> P2PE (f . g)
+    Splitting g -> Splitting (Pipes.maps f . g)
+    SplittingE g -> SplittingE (Pipes.maps f . g)
 
-
-
-
+folds :: FoldP b Void b' -> TransducerP a e b -> TransducerP a e b'
+folds somefold t = case t of
+    Mapper func -> undefined
+    Folder func -> undefined
+    P2P g -> undefined
+    P2PE g -> undefined
+    Splitting g -> undefined
+    SplittingE g -> undefined

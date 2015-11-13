@@ -36,6 +36,8 @@
     ,   fallibleTransducer
         -- * Transducer group operations
     ,   delimit
+    ,   groups
+    ,   folds
     ) where
 
 import Pipes.Transduce.Internal 

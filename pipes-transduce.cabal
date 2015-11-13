@@ -45,6 +45,7 @@ Library
         lens-family-core >= 1.1 && < 2
     Exposed-Modules:
         Pipes.Transduce
+        Pipes.Transduce.Text
         Pipes.Transduce.Internal
     GHC-Options: -O2 -Wall
 
