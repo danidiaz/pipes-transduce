@@ -286,10 +286,10 @@ groups f t = case t of
     SplittingE g -> SplittingE (Pipes.maps f . g)
 
 folds :: FoldP b Void b' -> TransducerP a e b -> TransducerP a e b'
-folds (Pipes.Transduce.Internal.fold -> foldfunc) t = case t of
-    Mapper func -> undefined
-    Folder func -> undefined
-    P2P g -> undefined
-    P2PE g -> undefined
-    Splitting g -> P2P (Pipes.concats . transFreeT (_ . foldfunc)  . g)
-    SplittingE g -> undefined
+folds somefold t = case t of
+    Mapper func -> folds somefold (P2P (\producer -> producer >-> Pipes.Prelude.map func))
+    Folder func -> folds somefold (P2P (\producer -> producer >-> mapFoldable func))
+    P2P g -> folds somefold (Splitting (liftF . g))
+    P2PE g -> folds somefold (SplittingE (liftF . g))
+    Splitting g -> P2P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
+    SplittingE g -> P2PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
