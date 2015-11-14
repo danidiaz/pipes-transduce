@@ -286,10 +286,10 @@ groups f t = case t of
     SplittingE g -> SplittingE (Pipes.maps f . g)
 
 folds :: FoldP b Void b' -> TransducerP a e b -> TransducerP a e b'
-folds somefold t = case t of
+folds (Pipes.Transduce.Internal.fold -> foldfunc) t = case t of
     Mapper func -> undefined
     Folder func -> undefined
     P2P g -> undefined
     P2PE g -> undefined
-    Splitting g -> undefined
+    Splitting g -> P2P (Pipes.concats . transFreeT (_ . foldfunc)  . g)
     SplittingE g -> undefined
