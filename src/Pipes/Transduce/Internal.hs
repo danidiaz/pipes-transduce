@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE EmptyDataDecls #-}
 
 module Pipes.Transduce.Internal where
 
@@ -196,7 +197,7 @@ foldFallibly (FoldP (unLift -> s)) = exhaustiveCont s
 fold :: FoldP b Void a -> Producer b IO r -> IO (a,r)
 fold (FoldP (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
-data TransducerP b e a = 
+data TransducerP x b e a = 
       Mapper (b -> a)
     | Folder (b -> [a])
     | P2P (forall r. Producer b IO r -> Producer a IO r)
@@ -204,10 +205,10 @@ data TransducerP b e a =
     | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
     | SplittingE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
 
-instance Functor (TransducerP b e) where
+instance Functor (TransducerP x b e) where
   fmap = second
 
-instance Bifunctor (TransducerP b) where
+instance Bifunctor (TransducerP x b) where
   bimap f g s = case s of
       Mapper x -> Mapper (g . x)
       Folder x -> Folder (fmap g . x)
@@ -216,28 +217,31 @@ instance Bifunctor (TransducerP b) where
       Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
       SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
 
-mapper :: (a -> b) -> TransducerP a e b
+mapper :: (a -> b) -> TransducerP Continuous a e b
 mapper = Mapper
 
-fallibleMapper :: (a -> Either e b) -> TransducerP a e b
+fallibleMapper :: (a -> Either e b) -> TransducerP Continuous a e b
 fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
     case fallible a of
         Left e -> lift (throwE e)
         Right b -> Pipes.yield b)))
 
-mapperFoldable :: Foldable f => (a -> f b) -> TransducerP a e b
+mapperFoldable :: Foldable f => (a -> f b) -> TransducerP Continuous a e b
 mapperFoldable f = Folder (Data.Foldable.toList . f)
 
-mapperEnumerable :: Enumerable f => (a -> f IO b) -> TransducerP a e b
+mapperEnumerable :: Enumerable f => (a -> f IO b) -> TransducerP Continuous a e b
 mapperEnumerable enumerable = P2P (\producer -> for producer (enumerate . toListT . enumerable))
 
-transducer :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP b e a
+transducer :: (forall r. Producer b IO r -> Producer a IO r) -> TransducerP Continuous b e a
 transducer = P2P
 
-fallibleTransducer :: (forall r. Producer b IO r -> Producer a IO (Either e r)) -> TransducerP b e a
+fallibleTransducer :: (forall r. Producer b IO r -> Producer a IO (Either e r)) -> TransducerP Continuous b e a
 fallibleTransducer = P2PE
 
-delimit :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -> TransducerP b e a -> TransducerP b e a'
+delimit 
+    :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -- ^
+    -> TransducerP Continuous b e a -- ^
+    -> TransducerP Delimited b e a' -- ^
 delimit f t = case t of
     Mapper func -> Splitting (\producer -> f (producer >-> Pipes.Prelude.map func))
     Folder func -> Splitting (\producer -> f (producer >-> mapFoldable func))
@@ -246,7 +250,7 @@ delimit f t = case t of
     Splitting g -> Splitting (f . Pipes.concats . g)
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
-transduce :: TransducerP b e a -> FoldP a e r -> FoldP b e r
+transduce :: TransducerP Continuous b e a -> FoldP a e r -> FoldP b e r
 transduce (Mapper _) (FoldP (Pure x)) = 
     FoldP (Pure x)
 transduce (Mapper f) (FoldP (Other s)) = (FoldP (Other (case s of
@@ -276,7 +280,10 @@ transduce (P2PE f) (FoldP (exhaustiveCont . unLift -> s)) = do
 transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
 transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
 
-groups :: (forall r. Producer b IO r -> Producer b' IO r) -> TransducerP a e b -> TransducerP a e b'
+groups 
+    :: (forall r. Producer b IO r -> Producer b' IO r) -- ^
+    -> TransducerP Delimited a e b  -- ^
+    -> TransducerP Delimited a e b' -- ^
 groups f t = case t of
     Mapper func -> P2P (f . (\producer -> producer >-> Pipes.Prelude.map func))
     Folder func -> P2P (f . (\producer -> producer >-> mapFoldable func))
@@ -285,7 +292,7 @@ groups f t = case t of
     Splitting g -> Splitting (Pipes.maps f . g)
     SplittingE g -> SplittingE (Pipes.maps f . g)
 
-folds :: FoldP b Void b' -> TransducerP a e b -> TransducerP a e b'
+folds :: FoldP b Void b' -> TransducerP Delimited a e b -> TransducerP Continuous a e b'
 folds somefold t = case t of
     Mapper func -> folds somefold (P2P (\producer -> producer >-> Pipes.Prelude.map func))
     Folder func -> folds somefold (P2P (\producer -> producer >-> mapFoldable func))
@@ -293,3 +300,7 @@ folds somefold t = case t of
     P2PE g -> folds somefold (SplittingE (liftF . g))
     Splitting g -> P2P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
     SplittingE g -> P2PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
+
+data Delimited
+
+data Continuous

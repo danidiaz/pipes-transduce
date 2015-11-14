@@ -1,4 +1,3 @@
-* "groups" and "folds" functions.
-* Add phantom type.
+* Add "trip" and "tripx" utility folds.
 * Add text module with utf8, utf8x, lines, foldedLines.
 

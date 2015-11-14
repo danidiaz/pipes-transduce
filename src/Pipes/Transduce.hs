@@ -27,6 +27,8 @@
         -- * Transducers
     ,   TransducerP
     ,   transduce
+    ,   Delimited
+    ,   Continuous
         -- * Building transducers
     ,   mapper 
     ,   fallibleMapper 
