@@ -4,26 +4,25 @@
     ,   foldFallibly
     ,   Pipes.Transduce.Internal.fold
         -- * Building folds
-        -- ** From continuations
-    ,   withFallibleCont 
-    ,   withFallibleCont'  
-    ,   withCont 
-    ,   withCont' 
-        -- ** From foldl Folds
+        -- ** From foldl folds
     ,   withFold 
     ,   withFoldIO 
-    ,   withFallibleFoldIO 
-    ,   withFoldM 
-        -- ** From Consumers
+    ,   withFallibleFold
+        -- ** From fonsumers
     ,   withConsumer 
     ,   withConsumer' 
     ,   withConsumerM 
     ,   withConsumerM' 
     ,   withSafeConsumer 
     ,   withFallibleConsumer 
-        -- ** From Parsers
+        -- ** From parsers
     ,   withParser 
     ,   withParserM 
+        -- ** From continuations
+    ,   withCont 
+    ,   withCont' 
+    ,   withFallibleCont 
+    ,   withFallibleCont'  
         -- * Transducers
     ,   TransducerP
     ,   transduce
