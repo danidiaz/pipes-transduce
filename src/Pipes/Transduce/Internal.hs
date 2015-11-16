@@ -316,7 +316,10 @@ groups f t = case t of
     Splitting g -> Splitting (Pipes.maps f . g)
     SplittingE g -> SplittingE (Pipes.maps f . g)
 
-folds :: FoldP b Void b' -> TransducerP Delimited a e b -> TransducerP Continuous a e b'
+folds 
+    :: FoldP b Void b' -- ^
+    -> TransducerP Delimited a e b 
+    -> TransducerP Continuous a e b'
 folds somefold t = case t of
     Mapper func -> folds somefold (P2P (\producer -> producer >-> Pipes.Prelude.map func))
     Folder func -> folds somefold (P2P (\producer -> producer >-> mapFoldable func))
@@ -328,3 +331,17 @@ folds somefold t = case t of
 data Delimited
 
 data Continuous
+
+trip :: FoldP b b ()
+trip = withFallibleCont' $ \producer -> do
+    n <- next producer  
+    return $ case n of 
+        Left r -> Right ((),r)
+        Right (b,_) -> Left b
+
+tripx :: FoldP b e ()
+tripx = withFallibleCont' $ \producer -> do
+    n <- next producer  
+    case n of 
+        Left r -> return (Right ((),r))
+        Right _ -> throwIO (AssertionFailed "tripx")

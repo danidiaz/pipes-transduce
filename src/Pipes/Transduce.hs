@@ -39,6 +39,9 @@
     ,   delimit
     ,   groups
     ,   folds
+        -- * Utilities
+    ,   trip
+    ,   tripx
     ) where
 
 import Pipes.Transduce.Internal 
