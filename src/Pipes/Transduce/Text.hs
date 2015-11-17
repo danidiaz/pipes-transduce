@@ -26,7 +26,7 @@ import Lens.Family (view)
 import Pipes.Transduce
 
 lines 
-    :: TransducerP Continuous a e Text -- ^
-    -> TransducerP Delimited a e Text -- ^
+    :: Transducer' Continuous a e Text -- ^
+    -> Transducer' Delimited a e Text -- ^
 lines sometrans = delimit (view Pipes.Text.lines) sometrans
 

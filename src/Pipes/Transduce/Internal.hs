@@ -32,19 +32,19 @@ import Pipes.Concurrent
 import Pipes.Safe (SafeT, runSafeT)
 import Lens.Family (folding)
 
-newtype FoldP b e a = FoldP (Lift (FoldP_ b e) a) deriving (Functor)
+newtype Fold' b e a = Fold' (Lift (Fold'_ b e) a) deriving (Functor)
 
-data FoldP_ b e a = 
+data Fold'_ b e a = 
          TrueFold (Foldl.FoldM (ExceptT e IO) b a)
        | ExhaustiveCont (forall r. Producer b IO r -> IO (Either e (a,r)))
        | NonexhaustiveCont (Producer b IO () -> IO (Either e a))
        deriving (Functor)
 
-instance Applicative (FoldP b e) where
-    pure a = FoldP (pure a)
-    FoldP fa <*> FoldP a = FoldP (fa <*> a)
+instance Applicative (Fold' b e) where
+    pure a = Fold' (pure a)
+    Fold' fa <*> Fold' a = Fold' (fa <*> a)
 
-instance Applicative (FoldP_ b e) where
+instance Applicative (Fold'_ b e) where
     pure a = ExhaustiveCont (\producer -> do
         r <- runEffect (producer >-> Pipes.drain)
         pure (Right (a,r)))
@@ -68,7 +68,7 @@ instance Applicative (FoldP_ b e) where
                     `finally` atomically seal1 
                     `finally` atomically seal2))
 
-instance Bifunctor (FoldP_ b) where
+instance Bifunctor (Fold'_ b) where
   bimap f g s = case s of
       TrueFold (Foldl.FoldM step start done) -> TrueFold (Foldl.FoldM 
           (\previous input -> withExceptT f (step previous input))
@@ -77,21 +77,21 @@ instance Bifunctor (FoldP_ b) where
       ExhaustiveCont u -> ExhaustiveCont (fmap (liftM  (bimap f (bimap g id))) u)
       NonexhaustiveCont h -> NonexhaustiveCont (fmap (liftM  (bimap f g)) h)
 
-instance Bifunctor (FoldP b) where
-  bimap f g (FoldP s) = FoldP (case s of
+instance Bifunctor (Fold' b) where
+  bimap f g (Fold' s) = Fold' (case s of
       Pure a -> Pure (g a)
       Other o -> Other (bimap f g o))
 
-instance (Monoid a) => Monoid (FoldP b e a) where
+instance (Monoid a) => Monoid (Fold' b e a) where
    mempty = pure mempty
    mappend s1 s2 = (<>) <$> s1 <*> s2
 
-nonexhaustiveCont :: FoldP_ b e a -> Producer b IO () -> IO (Either e a)
+nonexhaustiveCont :: Fold'_ b e a -> Producer b IO () -> IO (Either e a)
 nonexhaustiveCont (TrueFold e) = \producer -> runExceptT (Foldl.impurely Pipes.foldM e (hoist lift producer))
 nonexhaustiveCont (ExhaustiveCont e) = \producer -> liftM (fmap fst) (e producer)
 nonexhaustiveCont (NonexhaustiveCont u) = u
 
-exhaustiveCont :: FoldP_ b e a -> Producer b IO r -> IO (Either e (a,r))
+exhaustiveCont :: Fold'_ b e a -> Producer b IO r -> IO (Either e (a,r))
 exhaustiveCont s = case s of 
     TrueFold e -> \producer -> 
         runExceptT (Foldl.impurely Pipes.foldM' e (hoist lift producer))
@@ -110,76 +110,76 @@ exhaustiveCont s = case s of
 
 withFallibleCont 
     :: (Producer b IO () -> IO (Either e a)) -- ^
-    -> FoldP b e a 
-withFallibleCont f = FoldP (Other (NonexhaustiveCont f))
+    -> Fold' b e a 
+withFallibleCont f = Fold' (Other (NonexhaustiveCont f))
 
 withFallibleCont'  
     :: (forall r. Producer b IO r -> IO (Either e (a,r))) -- ^
-    -> FoldP b e a 
-withFallibleCont' f = FoldP (Other (ExhaustiveCont f))
+    -> Fold' b e a 
+withFallibleCont' f = Fold' (Other (ExhaustiveCont f))
 
 withCont 
     :: (Producer b IO () -> IO a) -- ^
-    -> FoldP b e a -- ^
+    -> Fold' b e a -- ^
 withCont aFold = withFallibleCont $ fmap (fmap pure) $ aFold
 
 withCont' 
     :: (forall r. Producer b IO r -> IO (a,r)) -- ^
-    -> FoldP b e a -- ^
+    -> Fold' b e a -- ^
 withCont' aFold = withFallibleCont' $ fmap (fmap pure) aFold
 
-withFold :: Foldl.Fold b a -> FoldP b e a 
-withFold aFold = FoldP (Other (TrueFold (Foldl.generalize aFold)))
+withFold :: Foldl.Fold b a -> Fold' b e a 
+withFold aFold = Fold' (Other (TrueFold (Foldl.generalize aFold)))
 
-withFoldIO :: Foldl.FoldM IO b a -> FoldP b e a 
-withFoldIO aFold = FoldP (Other (TrueFold (hoistFold lift aFold)))
+withFoldIO :: Foldl.FoldM IO b a -> Fold' b e a 
+withFoldIO aFold = Fold' (Other (TrueFold (hoistFold lift aFold)))
 
 hoistFold :: Monad m => (forall a. m a -> n a) -> Foldl.FoldM m i r -> Foldl.FoldM n i r 
 hoistFold g (Foldl.FoldM step begin done) = Foldl.FoldM (\s i -> g (step s i)) (g begin) (g . done)
 
-withFallibleFold :: Foldl.FoldM (ExceptT e IO) b a -> FoldP b e a 
-withFallibleFold aFold = FoldP (Other (TrueFold aFold))
+withFallibleFold :: Foldl.FoldM (ExceptT e IO) b a -> Fold' b e a 
+withFallibleFold aFold = Fold' (Other (TrueFold aFold))
 
 --withFoldM 
 --    :: MonadIO m 
 --    => (forall r. m (a,r) -> IO (Either e (c,r))) 
 --    -> Foldl.FoldM m b a 
---    -> FoldP b e c 
+--    -> Fold' b e c 
 --withFoldM whittle aFoldM = withFallibleCont' $ \producer -> 
 --    whittle $ Foldl.impurely Pipes.Prelude.foldM' aFoldM (hoist liftIO producer)
 
-withConsumer :: Consumer b IO () -> FoldP b e ()
+withConsumer :: Consumer b IO () -> Fold' b e ()
 withConsumer consumer = withCont $ \producer -> runEffect $ producer >-> consumer 
 
-withConsumer' :: Consumer b IO Void -> FoldP b e ()
+withConsumer' :: Consumer b IO Void -> Fold' b e ()
 withConsumer' consumer = withCont' $ \producer -> fmap ((,) ()) $ runEffect $ producer >-> fmap absurd consumer 
 
 withConsumerM :: MonadIO m 
               => (m () -> IO (Either e a))  -- ^
               -> Consumer b m () 
-              -> FoldP b e a
+              -> Fold' b e a
 withConsumerM whittle consumer = withFallibleCont $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> consumer 
 
 withConsumerM' :: MonadIO m 
                => (forall r. m r -> IO (Either e (a,r))) -- ^
                -> Consumer b m Void
-               -> FoldP b e a
+               -> Fold' b e a
 withConsumerM' whittle consumer = withFallibleCont' $ \producer -> whittle $ runEffect $ (hoist liftIO producer) >-> fmap absurd consumer 
 
 withSafeConsumer 
     :: Consumer b (SafeT IO) Void -- ^
-    -> FoldP b e ()
+    -> Fold' b e ()
 withSafeConsumer = withConsumerM' (fmap (\r -> Right ((),r)) . runSafeT)
 
 withFallibleConsumer 
     :: Consumer b (ExceptT e IO) Void -- ^
-    -> FoldP b e ()
+    -> Fold' b e ()
 withFallibleConsumer = withConsumerM' (fmap (fmap (\r -> ((), r))) . runExceptT)
 
 
 withParser 
     :: Pipes.Parse.Parser b IO (Either e a) -- ^
-    -> FoldP b e a 
+    -> Fold' b e a 
 withParser parser = withFallibleCont' $ \producer -> drainage $ Pipes.Parse.runStateT parser producer
   where
     drainage m = do 
@@ -191,7 +191,7 @@ withParser parser = withFallibleCont' $ \producer -> drainage $ Pipes.Parse.runS
 
 withParserM :: MonadIO m 
             => (forall r. m (a,r) -> IO (Either e (c,r))) -- ^
-            -> Pipes.Parse.Parser b m a -> FoldP b e c 
+            -> Pipes.Parse.Parser b m a -> Fold' b e c 
 withParserM f parser = withFallibleCont' $ \producer -> f $ drainage $ (Pipes.Parse.runStateT parser) (hoist liftIO producer)
   where
     drainage m = do 
@@ -201,13 +201,13 @@ withParserM f parser = withFallibleCont' $ \producer -> f $ drainage $ (Pipes.Pa
 
 ------------------------------------------------------------------------------
 
-foldFallibly :: FoldP b e a -> Producer b IO r -> IO (Either e (a,r))
-foldFallibly (FoldP (unLift -> s)) = exhaustiveCont s
+foldFallibly :: Fold' b e a -> Producer b IO r -> IO (Either e (a,r))
+foldFallibly (Fold' (unLift -> s)) = exhaustiveCont s
 
-fold :: FoldP b Void a -> Producer b IO r -> IO (a,r)
-fold (FoldP (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
+fold :: Fold' b Void a -> Producer b IO r -> IO (a,r)
+fold (Fold' (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
-data TransducerP x b e a = 
+data Transducer' x b e a = 
       Mapper (b -> a)
     | Folder (b -> [a])
     | P2P (forall r. Producer b IO r -> Producer a IO r)
@@ -215,10 +215,10 @@ data TransducerP x b e a =
     | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
     | SplittingE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
 
-instance Functor (TransducerP x b e) where
+instance Functor (Transducer' x b e) where
   fmap = second
 
-instance Bifunctor (TransducerP x b) where
+instance Bifunctor (Transducer' x b) where
   bimap f g s = case s of
       Mapper x -> Mapper (g . x)
       Folder x -> Folder (fmap g . x)
@@ -229,12 +229,12 @@ instance Bifunctor (TransducerP x b) where
 
 mapper 
     :: (a -> b) -- ^
-    -> TransducerP Continuous a e b
+    -> Transducer' Continuous a e b
 mapper = Mapper
 
 fallibleMapper 
     :: (a -> Either e b) -- ^
-    -> TransducerP Continuous a e b  -- ^
+    -> Transducer' Continuous a e b  -- ^
 fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
     case fallible a of
         Left e -> lift (throwE e)
@@ -243,29 +243,29 @@ fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoi
 mapperFoldable 
     :: Foldable f 
     => (a -> f b) -- ^
-    -> TransducerP Continuous a e b -- ^
+    -> Transducer' Continuous a e b -- ^
 mapperFoldable f = Folder (Data.Foldable.toList . f)
 
 mapperEnumerable 
     :: Enumerable f 
     => (a -> f IO b) -- ^
-    -> TransducerP Continuous a e b  -- ^
+    -> Transducer' Continuous a e b  -- ^
 mapperEnumerable enumerable = P2P (\producer -> for producer (enumerate . toListT . enumerable))
 
 transducer 
     :: (forall r. Producer b IO r -> Producer a IO r)  -- ^
-    -> TransducerP Continuous b e a -- ^
+    -> Transducer' Continuous b e a -- ^
 transducer = P2P
 
 fallibleTransducer 
     :: (forall r. Producer b IO r -> Producer a IO (Either e r))  -- ^
-    -> TransducerP Continuous b e a  -- ^
+    -> Transducer' Continuous b e a  -- ^
 fallibleTransducer = P2PE
 
 delimit 
     :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -- ^
-    -> TransducerP Continuous b e a -- ^
-    -> TransducerP Delimited b e a' -- ^
+    -> Transducer' Continuous b e a -- ^
+    -> Transducer' Delimited b e a' -- ^
 delimit f t = case t of
     Mapper func -> Splitting (\producer -> f (producer >-> Pipes.Prelude.map func))
     Folder func -> Splitting (\producer -> f (producer >-> mapFoldable func))
@@ -274,24 +274,24 @@ delimit f t = case t of
     Splitting g -> Splitting (f . Pipes.concats . g)
     SplittingE g -> SplittingE (f . Pipes.concats . g)
 
-transduce :: TransducerP Continuous b e a -> FoldP a e r -> FoldP b e r
-transduce (Mapper _) (FoldP (Pure x)) = 
-    FoldP (Pure x)
-transduce (Mapper f) (FoldP (Other s)) = (FoldP (Other (case s of
+transduce :: Transducer' Continuous b e a -> Fold' a e r -> Fold' b e r
+transduce (Mapper _) (Fold' (Pure x)) = 
+    Fold' (Pure x)
+transduce (Mapper f) (Fold' (Other s)) = (Fold' (Other (case s of
     TrueFold x -> TrueFold (Foldl.premapM f x)
     ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))
     NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f)))))
-transduce (Folder _) (FoldP (Pure x)) = 
-    FoldP (Pure x)
-transduce (Folder f) (FoldP (Other s)) = (FoldP (Other (case s of
+transduce (Folder _) (Fold' (Pure x)) = 
+    Fold' (Pure x)
+transduce (Folder f) (Fold' (Other s)) = (Fold' (Other (case s of
     TrueFold x -> TrueFold (Foldl.handlesM (folding f) x)
     ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))
     NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f)))))
-transduce (P2P f) (FoldP (unLift -> s)) = case s of
-    NonexhaustiveCont x -> FoldP (Other (NonexhaustiveCont (x . f)))
-    _ -> FoldP (Other (ExhaustiveCont (exhaustiveCont s . f)))
-transduce (P2PE f) (FoldP (exhaustiveCont . unLift -> s)) = do
-    FoldP (Other (ExhaustiveCont (\producer -> do
+transduce (P2P f) (Fold' (unLift -> s)) = case s of
+    NonexhaustiveCont x -> Fold' (Other (NonexhaustiveCont (x . f)))
+    _ -> Fold' (Other (ExhaustiveCont (exhaustiveCont s . f)))
+transduce (P2PE f) (Fold' (exhaustiveCont . unLift -> s)) = do
+    Fold' (Other (ExhaustiveCont (\producer -> do
         (outbox,inbox,seal) <- spawn' (bounded 1)
         runConceit $ 
             (\(r,()) r' -> (r,r'))
@@ -306,8 +306,8 @@ transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefol
 
 groups 
     :: (forall r. Producer b IO r -> Producer b' IO r) -- ^
-    -> TransducerP Delimited a e b  -- ^
-    -> TransducerP Delimited a e b' -- ^
+    -> Transducer' Delimited a e b  -- ^
+    -> Transducer' Delimited a e b' -- ^
 groups f t = case t of
     Mapper func -> P2P (f . (\producer -> producer >-> Pipes.Prelude.map func))
     Folder func -> P2P (f . (\producer -> producer >-> mapFoldable func))
@@ -317,9 +317,9 @@ groups f t = case t of
     SplittingE g -> SplittingE (Pipes.maps f . g)
 
 folds 
-    :: FoldP b Void b' -- ^
-    -> TransducerP Delimited a e b 
-    -> TransducerP Continuous a e b'
+    :: Fold' b Void b' -- ^
+    -> Transducer' Delimited a e b 
+    -> Transducer' Continuous a e b'
 folds somefold t = case t of
     Mapper func -> folds somefold (P2P (\producer -> producer >-> Pipes.Prelude.map func))
     Folder func -> folds somefold (P2P (\producer -> producer >-> mapFoldable func))
@@ -332,14 +332,14 @@ data Delimited
 
 data Continuous
 
-trip :: FoldP b b ()
+trip :: Fold' b b ()
 trip = withFallibleCont' $ \producer -> do
     n <- next producer  
     return $ case n of 
         Left r -> Right ((),r)
         Right (b,_) -> Left b
 
-tripx :: FoldP b e ()
+tripx :: Fold' b e ()
 tripx = withFallibleCont' $ \producer -> do
     n <- next producer  
     case n of 

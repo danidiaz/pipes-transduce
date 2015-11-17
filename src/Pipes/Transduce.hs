@@ -1,6 +1,6 @@
 ﻿module Pipes.Transduce (
         -- * Producer folds
-        FoldP
+        Fold'
     ,   foldFallibly
     ,   Pipes.Transduce.Internal.fold
         -- * Building folds
@@ -24,7 +24,7 @@
     ,   withFallibleCont 
     ,   withFallibleCont'  
         -- * Transducers
-    ,   TransducerP
+    ,   Transducer'
     ,   transduce
     ,   Delimited
     ,   Continuous
