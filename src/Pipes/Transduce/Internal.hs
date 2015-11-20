@@ -208,34 +208,42 @@ fold :: Fold' b Void a -> Producer b IO r -> IO (a,r)
 fold (Fold' (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
 data Transducer' x b e a = 
-      Mapper (b -> a)
-    | Folder (b -> [a])
-    | P2P (forall r. Producer b IO r -> Producer a IO r)
-    | P2PE (forall r. Producer b IO r -> Producer a IO (Either e r))
-    | Splitting (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
-    | SplittingE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
+      M (b -> a)
+    | F (b -> [a])
+    | P (forall r. Producer b IO r -> Producer a IO r)
+    | PE (forall r. Producer b IO r -> Producer a IO (Either e r))
+    | S (forall r. Producer b IO r -> FreeT (Producer a IO) IO r)
+    | SE (forall r. Producer b IO r -> FreeT (Producer a IO) IO (Either e r))
 
 instance Functor (Transducer' x b e) where
   fmap = second
 
 instance Bifunctor (Transducer' x b) where
   bimap f g s = case s of
-      Mapper x -> Mapper (g . x)
-      Folder x -> Folder (fmap g . x)
-      P2P x -> P2P (\producer -> for (x producer) (Pipes.yield . g))
-      P2PE x -> P2PE (\producer -> liftM (first f) (for (x producer) (Pipes.yield . g)))
-      Splitting x -> Splitting (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
-      SplittingE x -> SplittingE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
+      M x -> M (g . x)
+      F x -> F (fmap g . x)
+      P x -> P (\producer -> for (x producer) (Pipes.yield . g))
+      PE x -> PE (\producer -> liftM (first f) (for (x producer) (Pipes.yield . g)))
+      S x -> S (\producer -> transFreeT (\p -> for p (Pipes.yield . g)) (x producer))
+      SE x -> SE (\producer -> liftM (first f) (transFreeT (\p -> (for p (Pipes.yield . g))) (x producer)))
 
 mapper 
     :: (a -> b) -- ^
     -> Transducer' Continuous a e b
-mapper = Mapper
+mapper = M
+
+fallibleM 
+    :: (a -> Either e b) -- ^
+    -> Transducer' Continuous a e b  -- ^
+fallibleM fallible = PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
+    case fallible a of
+        Left e -> lift (throwE e)
+        Right b -> Pipes.yield b)))
 
 fallibleMapper 
     :: (a -> Either e b) -- ^
     -> Transducer' Continuous a e b  -- ^
-fallibleMapper fallible = P2PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
+fallibleMapper fallible = PE (\producer -> (runExceptT . distribute) (for (hoist lift producer) (\a -> do
     case fallible a of
         Left e -> lift (throwE e)
         Right b -> Pipes.yield b)))
@@ -244,53 +252,53 @@ mapperFoldable
     :: Foldable f 
     => (a -> f b) -- ^
     -> Transducer' Continuous a e b -- ^
-mapperFoldable f = Folder (Data.Foldable.toList . f)
+mapperFoldable f = F (Data.Foldable.toList . f)
 
 mapperEnumerable 
     :: Enumerable f 
     => (a -> f IO b) -- ^
     -> Transducer' Continuous a e b  -- ^
-mapperEnumerable enumerable = P2P (\producer -> for producer (enumerate . toListT . enumerable))
+mapperEnumerable enumerable = P (\producer -> for producer (enumerate . toListT . enumerable))
 
 transducer 
     :: (forall r. Producer b IO r -> Producer a IO r)  -- ^
     -> Transducer' Continuous b e a -- ^
-transducer = P2P
+transducer = P
 
 fallibleTransducer 
     :: (forall r. Producer b IO r -> Producer a IO (Either e r))  -- ^
     -> Transducer' Continuous b e a  -- ^
-fallibleTransducer = P2PE
+fallibleTransducer = PE
 
 delimit 
     :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -- ^
     -> Transducer' Continuous b e a -- ^
     -> Transducer' Delimited b e a' -- ^
 delimit f t = case t of
-    Mapper func -> Splitting (\producer -> f (producer >-> Pipes.Prelude.map func))
-    Folder func -> Splitting (\producer -> f (producer >-> mapFoldable func))
-    P2P g -> Splitting (f . g)
-    P2PE g -> SplittingE (f . g)
-    Splitting g -> Splitting (f . Pipes.concats . g)
-    SplittingE g -> SplittingE (f . Pipes.concats . g)
+    M func -> S (\producer -> f (producer >-> Pipes.Prelude.map func))
+    F func -> S (\producer -> f (producer >-> mapFoldable func))
+    P g -> S (f . g)
+    PE g -> SE (f . g)
+    S g -> S (f . Pipes.concats . g)
+    SE g -> SE (f . Pipes.concats . g)
 
 transduce :: Transducer' Continuous b e a -> Fold' a e r -> Fold' b e r
-transduce (Mapper _) (Fold' (Pure x)) = 
+transduce (M _) (Fold' (Pure x)) = 
     Fold' (Pure x)
-transduce (Mapper f) (Fold' (Other s)) = (Fold' (Other (case s of
+transduce (M f) (Fold' (Other s)) = (Fold' (Other (case s of
     TrueFold x -> TrueFold (Foldl.premapM f x)
     ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f))
     NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.map f)))))
-transduce (Folder _) (Fold' (Pure x)) = 
+transduce (F _) (Fold' (Pure x)) = 
     Fold' (Pure x)
-transduce (Folder f) (Fold' (Other s)) = (Fold' (Other (case s of
+transduce (F f) (Fold' (Other s)) = (Fold' (Other (case s of
     TrueFold x -> TrueFold (Foldl.handlesM (folding f) x)
     ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f))
     NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.Prelude.mapFoldable f)))))
-transduce (P2P f) (Fold' (unLift -> s)) = case s of
+transduce (P f) (Fold' (unLift -> s)) = case s of
     NonexhaustiveCont x -> Fold' (Other (NonexhaustiveCont (x . f)))
     _ -> Fold' (Other (ExhaustiveCont (exhaustiveCont s . f)))
-transduce (P2PE f) (Fold' (exhaustiveCont . unLift -> s)) = do
+transduce (PE f) (Fold' (exhaustiveCont . unLift -> s)) = do
     Fold' (Other (ExhaustiveCont (\producer -> do
         (outbox,inbox,seal) <- spawn' (bounded 1)
         runConceit $ 
@@ -301,32 +309,32 @@ transduce (P2PE f) (Fold' (exhaustiveCont . unLift -> s)) = do
             (Conceit $
                 (runEffect (f producer >-> (toOutput outbox *> Pipes.drain)) 
                 `finally` atomically seal)))))
-transduce (Splitting f) somefold = transduce (P2P (Pipes.concats . f)) somefold
-transduce (SplittingE f) somefold = transduce (P2PE (Pipes.concats . f)) somefold
+transduce (S f) somefold = transduce (P (Pipes.concats . f)) somefold
+transduce (SE f) somefold = transduce (PE (Pipes.concats . f)) somefold
 
 groups 
     :: (forall r. Producer b IO r -> Producer b' IO r) -- ^
     -> Transducer' Delimited a e b  -- ^
     -> Transducer' Delimited a e b' -- ^
 groups f t = case t of
-    Mapper func -> P2P (f . (\producer -> producer >-> Pipes.Prelude.map func))
-    Folder func -> P2P (f . (\producer -> producer >-> mapFoldable func))
-    P2P g -> P2P (f . g)
-    P2PE g -> P2PE (f . g)
-    Splitting g -> Splitting (Pipes.maps f . g)
-    SplittingE g -> SplittingE (Pipes.maps f . g)
+    M func -> P (f . (\producer -> producer >-> Pipes.Prelude.map func))
+    F func -> P (f . (\producer -> producer >-> mapFoldable func))
+    P g -> P (f . g)
+    PE g -> PE (f . g)
+    S g -> S (Pipes.maps f . g)
+    SE g -> SE (Pipes.maps f . g)
 
 folds 
     :: Fold' b Void b' -- ^
     -> Transducer' Delimited a e b 
     -> Transducer' Continuous a e b'
 folds somefold t = case t of
-    Mapper func -> folds somefold (P2P (\producer -> producer >-> Pipes.Prelude.map func))
-    Folder func -> folds somefold (P2P (\producer -> producer >-> mapFoldable func))
-    P2P g -> folds somefold (Splitting (liftF . g))
-    P2PE g -> folds somefold (SplittingE (liftF . g))
-    Splitting g -> P2P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
-    SplittingE g -> P2PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
+    M func -> folds somefold (P (\producer -> producer >-> Pipes.Prelude.map func))
+    F func -> folds somefold (P (\producer -> producer >-> mapFoldable func))
+    P g -> folds somefold (S (liftF . g))
+    PE g -> folds somefold (SE (liftF . g))
+    S g -> P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
+    SE g -> PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold somefold) . g)
 
 data Delimited
 
