@@ -40,12 +40,14 @@ Library
         pipes-parse                        ,
         pipes-safe                         ,
         pipes-text    >= 0.0.1.0           ,
+        pipes-bytestring                   ,
         monoid-subclasses == 0.4.*         ,
         void          >= 0.6      && < 1.0 ,
         conceit       >= 0.3.2.0  && < 0.4.0.0,
         lens-family-core >= 1.1 && < 2
     Exposed-Modules:
         Pipes.Transduce
+        Pipes.Transduce.ByteString
         Pipes.Transduce.Text
         Pipes.Transduce.Internal
     GHC-Options: -O2 -Wall

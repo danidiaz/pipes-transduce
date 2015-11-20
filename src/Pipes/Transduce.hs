@@ -8,7 +8,7 @@
     ,   withFold 
     ,   withFoldIO 
     ,   withFallibleFold
-        -- ** From fonsumers
+        -- ** From consumers
     ,   withConsumer 
     ,   withConsumer' 
     ,   withConsumerM 
