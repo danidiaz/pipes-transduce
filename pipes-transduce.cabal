@@ -63,6 +63,7 @@ test-suite doctests
       , free          == 4.*
       , pipes         == 4.*
       , doctest       >= 0.10.1
+      , foldl         >= 1.1      && < 2
 
 test-suite tests
   type:           exitcode-stdio-1.0
@@ -77,3 +78,4 @@ test-suite tests
       , monoid-subclasses == 0.4.*
       , foldl               
       , pipes        
+      , pipes-transduce

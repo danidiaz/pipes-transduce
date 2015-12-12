@@ -25,9 +25,9 @@
     ,   withFallibleCont'  
         -- * Transducers
     ,   Transducer'
-    ,   transduce
     ,   Delimited
     ,   Continuous
+    ,   transduce
         -- * Building transducers
     ,   mapper 
     ,   fallibleMapper 
