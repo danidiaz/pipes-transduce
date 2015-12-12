@@ -54,6 +54,7 @@ import Pipes.Transduce
 -}
 
 {-| 
+    Collect strict 'ByteString's into a lazy 'ByteString'.
 
 >>> PT.fold intoLazyBytes (mapM_ yield ["aa","bb","cc"]) 
 ("aabbcc",())

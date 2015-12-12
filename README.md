@@ -12,8 +12,8 @@ I wanted a fold-like datatype for Producers that let me perform "bracketing"
 operations (the folds in foldl are push-based and do not allow that) and had
 "stopping on error" behaviour already baked in.
 
-If you don't need any of that, you are probably better off just using **pipes**
-and/or **foldl** by themselves. 
+If you don't need any of that, you are better off just using **pipes** and/or
+**foldl** by themselves. 
 
 ## Where can I find working examples for this library?
 

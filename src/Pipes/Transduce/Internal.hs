@@ -32,6 +32,11 @@ import Pipes.Concurrent
 import Pipes.Safe (SafeT, runSafeT)
 import Lens.Family (folding)
 
+{-| 
+    A computation in 'IO' that completely drains a 'Producer' of @b@ values,
+    returning a value of type @a@, except when it fails early with an error of
+    type @e@.
+-}
 newtype Fold' b e a = Fold' (Lift (Fold'_ b e) a) deriving (Functor)
 
 data Fold'_ b e a = 
@@ -40,6 +45,13 @@ data Fold'_ b e a =
        | NonexhaustiveCont (Producer b IO () -> IO (Either e a))
        deriving (Functor)
 
+{-| 
+    'pure' creates a 'Fold'' that does nothing besides draining the
+    'Producer'. 
+
+    '<*>' feeds both folds with the data of the same 'Producer'. If any of
+    them fails the combination fails.
+-}
 instance Applicative (Fold' b e) where
     pure a = Fold' (pure a)
     Fold' fa <*> Fold' a = Fold' (fa <*> a)
@@ -77,6 +89,9 @@ instance Bifunctor (Fold'_ b) where
       ExhaustiveCont u -> ExhaustiveCont (fmap (liftM  (bimap f (bimap g id))) u)
       NonexhaustiveCont h -> NonexhaustiveCont (fmap (liftM  (bimap f g)) h)
 
+{-| 
+    'first' is useful to massage errors.
+-}
 instance Bifunctor (Fold' b) where
   bimap f g (Fold' s) = Fold' (case s of
       Pure a -> Pure (g a)
@@ -151,6 +166,9 @@ withFallibleFold aFold = Fold' (Other (TrueFold aFold))
 withConsumer :: Consumer b IO () -> Fold' b e ()
 withConsumer consumer = withCont $ \producer -> runEffect $ producer >-> consumer 
 
+{-| Builds a 'Fold'' out of a 'Consumer' that never stops by itself.
+
+-}
 withConsumer' :: Consumer b IO Void -> Fold' b e ()
 withConsumer' consumer = withCont' $ \producer -> fmap ((,) ()) $ runEffect $ producer >-> fmap absurd consumer 
 
@@ -201,12 +219,24 @@ withParserM f parser = withFallibleCont' $ \producer -> f $ drainage $ (Pipes.Pa
 
 ------------------------------------------------------------------------------
 
+{-| 
+    Run a 'Fold''.
+-}
 foldFallibly :: Fold' b e a -> Producer b IO r -> IO (Either e (a,r))
 foldFallibly (Fold' (unLift -> s)) = exhaustiveCont s
 
+{-| 
+    Run a 'Fold'' that never returns an error value (but which may still throw exceptions!)
+-}
 fold :: Fold' b Void a -> Producer b IO r -> IO (a,r)
 fold (Fold' (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
+{-| A transformation that takes the inputs of a 'Fold'' from type @a@ to type @b@.		
+
+    Optionally, the transformation may delimit groups of elements in the
+    stream. In that case the phantom type @x@ will be 'Delimited'. Otherwise, it will be
+    'Continuous'.
+-}
 data Transducer' x b e a = 
       M (b -> a)
     | F (b -> [a])
@@ -270,6 +300,9 @@ fallibleTransducer
     -> Transducer' Continuous b e a  -- ^
 fallibleTransducer = PE
 
+{-| Plug splitting functions from @pipes-group@ here.		
+
+-}
 delimit 
     :: (forall r. Producer a IO r -> FreeT (Producer a' IO) IO r) -- ^
     -> Transducer' Continuous b e a -- ^
@@ -282,6 +315,9 @@ delimit f t = case t of
     S g -> S (f . Pipes.concats . g)
     SE g -> SE (f . Pipes.concats . g)
 
+{-| Apply a 'Transducer'' ('Delimited' of 'Continuous') to a 'Fold''.		
+
+-}
 transduce :: Transducer' x b e a -> Fold' a e r -> Fold' b e r
 transduce (M _) (Fold' (Pure x)) = 
     Fold' (Pure x)
@@ -312,6 +348,9 @@ transduce (PE f) (Fold' (exhaustiveCont . unLift -> s)) = do
 transduce (S f) somefold = transduce (P (Pipes.concats . f)) somefold
 transduce (SE f) somefold = transduce (PE (Pipes.concats . f)) somefold
 
+{-| Tweak each of the groups delimited by a 'Transducer''.		
+
+-}
 groups 
     :: (forall r. Producer b IO r -> Producer b' IO r) -- ^
     -> Transducer' Delimited a e b  -- ^
@@ -340,20 +379,3 @@ data Delimited
 
 data Continuous
 
-trip :: Fold' b b ()
-trip = withFallibleCont' $ \producer -> do
-    n <- next producer  
-    return $ case n of 
-        Left r -> Right ((),r)
-        Right (b,_) -> Left b
-
-{-| __/BEWARE!/__ 
-    This 'Transducer' may throw 'AssertionFailed'.
-    __/BEWARE!/__ 
--}
-tripx :: Fold' b e ()
-tripx = withFallibleCont' $ \producer -> do
-    n <- next producer  
-    case n of 
-        Left r -> return (Right ((),r))
-        Right _ -> throwIO (AssertionFailed "tripx")

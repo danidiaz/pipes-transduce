@@ -59,6 +59,8 @@ import Pipes.Transduce.Internal
 -}
 
 {-| 
+    Split the stream into lines, collect them into lazy 'Text' values, and pass
+    them downstream. 
 
 >>> PT.fold (transduce foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
 (["aaaa","bbbb"],())
@@ -84,7 +86,7 @@ lines sometrans = delimit (view Pipes.Text.lines) sometrans
 
 {-| Plug decoding functions from @pipes-text@ here. 
 
-    The error value are the first undecoded bytes.
+    The first undecodable bytes will be the error value.
 -}
 decoder 
     :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
@@ -110,7 +112,8 @@ decoderx f = P (\producer -> f producer >>= \producer' -> lift (do
         Left r -> return r
         Right b -> throwIO (DecodeError "transducer decoding error" (Just (Data.ByteString.head (fst b)))))) 
 
-{-|  The error value are the first undecoded bytes.
+{-| 
+    The first undecodable bytes will be the error value.
 
 >>> PT.foldFallibly (transduce utf8 intoLazyText) (mapM_ yield ["aa"]) 
 Right ("aa",())
@@ -132,6 +135,7 @@ utf8x :: Transducer' Continuous ByteString e Text -- ^
 utf8x = decoderx decodeUtf8
 
 {-| 
+    Collect strict 'Text's into a lazy 'Text'.
 
 >>> PT.fold intoLazyText (mapM_ yield ["aa","bb","cc"]) 
 ("aabbcc",())
