@@ -32,7 +32,7 @@ import Pipes
 import qualified Pipes.Text
 import Pipes.Text.Encoding (decodeUtf8) 
 import Pipes.Lift (distribute) 
-import Pipes.Prelude
+--import Pipes.Prelude
 import qualified Pipes.ByteString (hGetSome)
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Group as Pipes
@@ -46,6 +46,19 @@ import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 import Pipes.Transduce
 
+{- $setup
+>>> :set -XOverloadedStrings
+>>> import Control.Applicative
+>>> import Control.Monad
+>>> import qualified Pipes.Transduce as PT
+-}
+
+{-| 
+
+>>> PT.fold intoLazyBytes (mapM_ yield ["aa","bb","cc"]) 
+("aabbcc",())
+
+-}
 intoLazyBytes :: Fold' ByteString e Data.ByteString.Lazy.ByteString
 intoLazyBytes = fmap Data.ByteString.Lazy.fromChunks (withFold Foldl.list)
 

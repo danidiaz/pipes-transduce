@@ -282,7 +282,7 @@ delimit f t = case t of
     S g -> S (f . Pipes.concats . g)
     SE g -> SE (f . Pipes.concats . g)
 
-transduce :: Transducer' Continuous b e a -> Fold' a e r -> Fold' b e r
+transduce :: Transducer' x b e a -> Fold' a e r -> Fold' b e r
 transduce (M _) (Fold' (Pure x)) = 
     Fold' (Pure x)
 transduce (M f) (Fold' (Other s)) = (Fold' (Other (case s of
@@ -347,6 +347,10 @@ trip = withFallibleCont' $ \producer -> do
         Left r -> Right ((),r)
         Right (b,_) -> Left b
 
+{-| __/BEWARE!/__ 
+    This 'Transducer' may throw 'AssertionFailed'.
+    __/BEWARE!/__ 
+-}
 tripx :: Fold' b e ()
 tripx = withFallibleCont' $ \producer -> do
     n <- next producer  
