@@ -1,12 +1,17 @@
 ﻿{-# LANGUAGE RankNTypes #-}
 
 module Pipes.Transduce.Text (
-        lines
+        -- * Collecting input
+        intoLazyText 
+        -- * Splitting
+    ,   lines
+        -- * Grouping
+    ,   foldedLines
+        -- * Decoding
     ,   decoder
     ,   decoderx
     ,   utf8
     ,   utf8x
-    ,   intoLazyText 
     ) where
 
 import Prelude hiding (lines)
@@ -39,6 +44,13 @@ import Lens.Family (view)
 
 import Pipes.Transduce
 import Pipes.Transduce.Internal
+
+foldedLines 
+    :: Transducer' Continuous Text e Data.Text.Lazy.Text 
+foldedLines = 
+    Pipes.Transduce.folds 
+    (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.withFold Foldl.list)) 
+    (lines (Pipes.Transduce.mapper id))
 
 lines 
     :: Transducer' Continuous a e Text -- ^

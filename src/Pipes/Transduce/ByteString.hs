@@ -1,9 +1,15 @@
 ﻿{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Pipes.Transduce.ByteString (
+        -- * Collecting  input
         intoLazyBytes
-    ,   driveHandle
-    ,   driveHandleFallibly
+        -- * Reading from handles
+    ,   drainHandle
+    ,   drainHandleFallibly
+    ,   ChunkSize
+    ,   chunkSize
+    ,   chunkSizeDefault
     ) where
 
 import Prelude hiding (lines)
@@ -36,25 +42,35 @@ import qualified Data.Text.Lazy
 import Pipes.Concurrent
 import Lens.Family (view)
 import System.IO
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 import Pipes.Transduce
 
 intoLazyBytes :: Fold' ByteString e Data.ByteString.Lazy.ByteString
 intoLazyBytes = fmap Data.ByteString.Lazy.fromChunks (withFold Foldl.list)
 
-driveHandleFallibly 
+drainHandleFallibly 
     :: Fold' ByteString e r 
-    -> Int -- ^ max chunk size
+    -> ChunkSize 
     -> Handle 
     -> IO (Either e r) 
-driveHandleFallibly somefold chunkSize handle =
-    fmap (bimap id fst) (Pipes.Transduce.foldFallibly somefold (Pipes.ByteString.hGetSome chunkSize handle))
+drainHandleFallibly somefold (ChunkSize csize) handle =
+    fmap (bimap id fst) (Pipes.Transduce.foldFallibly somefold (Pipes.ByteString.hGetSome csize handle))
 
-driveHandle
+drainHandle
     :: Fold' ByteString Void r 
-    -> Int -- ^ max chunk size
+    -> ChunkSize  
     -> Handle 
     -> IO r
-driveHandle somefold chunkSize handle =
-    fmap fst (Pipes.Transduce.fold somefold (Pipes.ByteString.hGetSome chunkSize handle))
+drainHandle somefold (ChunkSize csize) handle =
+    fmap fst (Pipes.Transduce.fold somefold (Pipes.ByteString.hGetSome csize handle))
 
+{-| Maximum chunk size      
+-}
+newtype ChunkSize = ChunkSize Int deriving (Show,Eq,Ord,Num)
+
+chunkSize :: Int -> ChunkSize
+chunkSize = ChunkSize
+
+chunkSizeDefault :: ChunkSize
+chunkSizeDefault = chunkSize defaultChunkSize
