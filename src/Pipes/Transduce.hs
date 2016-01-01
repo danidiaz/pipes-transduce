@@ -43,6 +43,8 @@
     ,   delimit
     ,   groups
     ,   folds
+    ,   concats
+    ,   intercalates
         -- * Utilities
     ,   trip
     ,   tripx

@@ -315,10 +315,10 @@ delimit f t = case t of
     S g -> S (f . Pipes.concats . g)
     SE g -> SE (f . Pipes.concats . g)
 
-{-| Apply a 'Transducer'' ('Delimited' of 'Continuous') to a 'Fold''.		
+{-| Apply a 'Transducer'' to a 'Fold''.		
 
 -}
-transduce :: Transducer' x b e a -> Fold' a e r -> Fold' b e r
+transduce :: Transducer' Delimited b e a -> Fold' a e r -> Fold' b e r
 transduce (M _) (Fold' (Pure x)) = 
     Fold' (Pure x)
 transduce (M f) (Fold' (Other s)) = (Fold' (Other (case s of
@@ -378,4 +378,27 @@ folds somefold t = case t of
 data Delimited
 
 data Continuous
+
+concats 
+    :: Transducer' Delimited a e b   -- ^
+    -> Transducer' Continuous a e b
+concats t =  case t of
+    M func -> M func
+    F func -> F func
+    P g -> P g
+    PE g -> PE g
+    S g -> P (Pipes.concats . g)
+    SE g -> PE (Pipes.concats . g)
+
+intercalates 
+    :: Producer b IO ()  -- ^
+    -> Transducer' Delimited a e b 
+    -> Transducer' Continuous a e b
+intercalates p t =  case t of
+    M func -> M func
+    F func -> F func
+    P g -> P g
+    PE g -> PE g
+    S g -> P (Pipes.intercalates p . g)
+    SE g -> PE (Pipes.intercalates p . g)
 
