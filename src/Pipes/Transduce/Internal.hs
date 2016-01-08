@@ -402,3 +402,72 @@ intercalates p t =  case t of
     S g -> P (Pipes.intercalates p . g)
     SE g -> PE (Pipes.intercalates p . g)
 
+
+
+newtype Fold2 b1 b2 e a = Fold2 (forall r1 r2. Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
+
+instance Bifunctor (Fold2 b1 b2) where
+    bimap f g (Fold2 s) = Fold2 (fmap (fmap (fmap (bimap f (\(x1,x2,x3) -> (g x1,x2,x3))))) s) 
+
+instance Applicative (Fold2 b1 b2 e) where
+    pure a = Fold2 (\producer1 producer2 -> do
+        (r1,r2) <- _runConceit $
+            (,)
+            <$>
+            _Conceit (runEffect (producer1 >-> Pipes.drain))
+            <*>
+            _Conceit (runEffect (producer2 >-> Pipes.drain))
+        pure (Right (a,r1,r2)))
+
+    Fold2 fs <*> Fold2 as = Fold2 (\producer1 producer2 -> do
+        (outbox1a,inbox1a,seal1a) <- spawn' (bounded 1)
+        (outbox2a,inbox2a,seal2a) <- spawn' (bounded 1)
+        (outbox1b,inbox1b,seal1b) <- spawn' (bounded 1)
+        (outbox2b,inbox2b,seal2b) <- spawn' (bounded 1)
+        runConceit $
+            (\(f,(),()) (x,(),()) r1 r2 -> (f x,r1,r2))
+            <$>
+            Conceit (fs (fromInput inbox1a) (fromInput inbox1b) `finally` atomically seal1a `finally` atomically seal1b)
+            <*>
+            Conceit (as (fromInput inbox2a) (fromInput inbox2b) `finally` atomically seal2a `finally` atomically seal2b)
+            <*>
+            (_Conceit $
+                (runEffect (producer1 >-> Pipes.tee (toOutput outbox1a *> Pipes.drain) 
+                                      >->           (toOutput outbox2a *> Pipes.drain)))
+                `finally` atomically seal1a 
+                `finally` atomically seal2a)
+            <*>
+            (_Conceit $
+                (runEffect (producer2 >-> Pipes.tee (toOutput outbox1b *> Pipes.drain) 
+                                      >->           (toOutput outbox2b *> Pipes.drain)))
+                `finally` atomically seal1b 
+                `finally` atomically seal2b))
+
+{-| 
+    Run a 'Fold2'.
+-}
+foldFallibly2 :: Fold2 b1 b2 e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
+foldFallibly2 (Fold2 s) producer1 producer2 = s producer1 producer2
+
+
+{-| 
+    Run a 'Fold2'.
+-}
+fold2 :: Fold2 b1 b2 Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
+fold2 (Fold2 s) producer1 producer2 = liftM (either absurd id) (s producer1 producer2) 
+
+separated :: Fold' b1 e r1 -> Fold' b2 e r2 -> Fold2 b1 b2 e (r1,r2)
+separated f1 f2 = Fold2 (\producer1 producer2 ->
+    runConceit $
+        (\(r1,x1) (r2,x2) -> ((r1,r2),x1,x2))
+        <$>
+        Conceit (foldFallibly f1 producer1)
+        <*>
+        Conceit (foldFallibly f2 producer2))
+
+both :: Fold' b e r -> Fold2 b b e (r,r)
+both f = separated f f
+
+combined :: Transducer' Delimited b1 e x -> Transducer' Delimited b1 e x -> Fold' x e a -> Fold2 b1 b2 e a
+combined = undefined
+
