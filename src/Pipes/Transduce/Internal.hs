@@ -490,13 +490,13 @@ combined t1 t2 f = Fold2 (\producer1 producer2 -> do
 
 
 --
-newtype Fold2I i b1 b2 e a = Fold2I (forall r1 r2. Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
+newtype Fold2I b1 b2 i e a = Fold2I (forall r1 r2. Producer b1 IO r1 -> Producer b2 IO r2 -> Consumer i IO () -> IO (Either e (a,r1,r2))) deriving (Functor)
 
-instance Bifunctor (Fold2I i b1 b2) where
+instance Bifunctor (Fold2I b1 b2 i) where
     bimap f g (Fold2I s) = Fold2I (fmap (fmap (fmap (fmap (bimap f (\(x1,x2,x3) -> (g x1,x2,x3)))))) s)
 
-instance Applicative (Fold2I i b1 b2 e) where
-    pure a = Fold2I (\_ producer1 producer2 -> do
+instance Applicative (Fold2I b1 b2 i e) where
+    pure a = Fold2I (\producer1 producer2 _ -> do
         (r1,r2) <- _runConceit $
             (,)
             <$>
@@ -505,7 +505,7 @@ instance Applicative (Fold2I i b1 b2 e) where
             _Conceit (runEffect (producer2 >-> Pipes.drain))
         pure (Right (a,r1,r2)))
 
-    Fold2I fs <*> Fold2I as = Fold2I (\consumer producer1 producer2 -> do
+    Fold2I fs <*> Fold2I as = Fold2I (\producer1 producer2 consumer -> do
         (outbox1a,inbox1a,seal1a) <- spawn' (bounded 1)
         (outbox2a,inbox2a,seal2a) <- spawn' (bounded 1)
         (outbox1b,inbox1b,seal1b) <- spawn' (bounded 1)
@@ -515,9 +515,9 @@ instance Applicative (Fold2I i b1 b2 e) where
         runConceit $
             (\(f,(),()) (x,(),()) r1 r2 _ -> (f x,r1,r2))
             <$>
-            Conceit (fs (toOutput outbox1p) (fromInput inbox1a) (fromInput inbox1b)  `finally` atomically seal1a `finally` atomically seal1b `finally` atomically seal1p)
+            Conceit (fs (fromInput inbox1a) (fromInput inbox1b) (toOutput outbox1p) `finally` atomically seal1a `finally` atomically seal1b `finally` atomically seal1p)
             <*>
-            Conceit (as (toOutput outbox2p) (fromInput inbox2a) (fromInput inbox2b)  `finally` atomically seal2a `finally` atomically seal2b `finally` atomically seal2p)
+            Conceit (as (fromInput inbox2a) (fromInput inbox2b) (toOutput outbox2p) `finally` atomically seal2a `finally` atomically seal2b `finally` atomically seal2p)
             <*>
             (_Conceit $
                 (runEffect (producer1 >-> Pipes.tee (toOutput outbox1a *> Pipes.drain) 
@@ -541,15 +541,15 @@ instance Applicative (Fold2I i b1 b2 e) where
 {-| 
     Run a 'Fold2I'.
 -}
-foldFallibly2I :: Fold2I i b1 b2 e a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
+foldFallibly2I :: Fold2I b1 b2 i e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> Consumer i IO () -> IO (Either e (a,r1,r2))
 foldFallibly2I (Fold2I s) = s
 
 
 {-| 
     Run a 'Fold2I' that never returns an error value (but which may still throw exceptions!)
 -}
-fold2I :: Fold2I i b1 b2 Void a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
+fold2I :: Fold2I b1 b2 i Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> Consumer i IO () -> IO (a,r1,r2)
 fold2I (Fold2I s) consumer producer1 producer2 = liftM (either absurd id) (s consumer producer1 producer2) 
 
-promote :: Fold2 b1 b2 e a -> Fold2I i b1 b2 e a
-promote (Fold2 s) = Fold2I (const s)
+promote :: Fold2 b1 b2 e a -> Fold2I b1 b2 i e a
+promote (Fold2 s) = Fold2I (\p1 p2 _ -> s p1 p2)

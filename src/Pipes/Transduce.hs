@@ -3,18 +3,7 @@
         Fold1
     ,   foldFallibly1
     ,   Pipes.Transduce.Internal.fold1
-        -- * Multiple Producer folds
-    ,   Fold2
-    ,   foldFallibly2
-    ,   fold2
-    ,   separated
-    ,   combined
-        -- * Wat
-    ,   Fold2I
-    ,   foldFallibly2I
-    ,   fold2I
-    ,   promote
-        -- * Building folds
+        -- * Building Producer folds
         -- ** From foldl folds
         -- $foldl
     ,   withFold 
@@ -38,12 +27,12 @@
     ,   withCont' 
     ,   withFallibleCont 
     ,   withFallibleCont'  
-        -- * Transducers
+        -- * Fold transducers
     ,   Transducer
     ,   Delimited
     ,   Continuous
     ,   transduce1
-        -- * Building transducers
+        -- * Building fold transducers
     ,   mapper 
     ,   fallibleMapper 
     ,   mapperFoldable 
@@ -56,6 +45,17 @@
     ,   folds
     ,   concats
     ,   intercalates
+        -- * Folding multiple producers
+    ,   Fold2
+    ,   foldFallibly2
+    ,   fold2
+    ,   separated
+    ,   combined
+        -- * Wat
+    ,   Fold2I
+    ,   foldFallibly2I
+    ,   fold2I
+    ,   promote
         -- * Utilities
     ,   trip
     ,   tripx
