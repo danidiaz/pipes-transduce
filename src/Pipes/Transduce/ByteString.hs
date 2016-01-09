@@ -56,28 +56,28 @@ import Pipes.Transduce
 {-| 
     Collect strict 'ByteString's into a lazy 'ByteString'.
 
->>> PT.fold intoLazyBytes (mapM_ yield ["aa","bb","cc"]) 
+>>> PT.fold1  intoLazyBytes (mapM_ yield ["aa","bb","cc"]) 
 ("aabbcc",())
 
 -}
-intoLazyBytes :: Fold' ByteString e Data.ByteString.Lazy.ByteString
+intoLazyBytes :: Fold1 ByteString e Data.ByteString.Lazy.ByteString
 intoLazyBytes = fmap Data.ByteString.Lazy.fromChunks (withFold Foldl.list)
 
 drainHandleFallibly 
-    :: Fold' ByteString e r 
+    :: Fold1 ByteString e r 
     -> ChunkSize 
     -> Handle 
     -> IO (Either e r) 
 drainHandleFallibly somefold (ChunkSize csize) handle =
-    fmap (bimap id fst) (Pipes.Transduce.foldFallibly somefold (Pipes.ByteString.hGetSome csize handle))
+    fmap (bimap id fst) (Pipes.Transduce.foldFallibly1 somefold (Pipes.ByteString.hGetSome csize handle))
 
 drainHandle
-    :: Fold' ByteString Void r 
+    :: Fold1 ByteString Void r 
     -> ChunkSize  
     -> Handle 
     -> IO r
 drainHandle somefold (ChunkSize csize) handle =
-    fmap fst (Pipes.Transduce.fold somefold (Pipes.ByteString.hGetSome csize handle))
+    fmap fst (Pipes.Transduce.fold1 somefold (Pipes.ByteString.hGetSome csize handle))
 
 {-| Maximum chunk size      
 -}

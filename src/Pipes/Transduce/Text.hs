@@ -5,6 +5,7 @@ module Pipes.Transduce.Text (
         intoLazyText 
         -- * Splitting
     ,   lines
+    ,   lines_
         -- * Grouping
     ,   foldedLines
         -- * Decoding
@@ -20,6 +21,7 @@ import Data.Monoid
 import Data.Void
 import Data.Foldable
 import Data.ByteString
+import qualified Data.Text 
 import Data.Text hiding (lines)
 import Data.Text.Encoding.Error (UnicodeException(..))
 import Control.Applicative
@@ -62,27 +64,38 @@ import Pipes.Transduce.Internal
     Split the stream into lines, collect them into lazy 'Text' values, and pass
     them downstream. 
 
->>> PT.fold (transduce foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
+>>> PT.fold1  (transduce1 foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
 (["aaaa","bbbb"],())
 
 -}
 foldedLines 
-    :: Transducer' Continuous Text e Data.Text.Lazy.Text 
+    :: Transducer Continuous Text e Data.Text.Lazy.Text 
 foldedLines = 
     Pipes.Transduce.folds 
     (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.withFold Foldl.list)) 
-    (lines (Pipes.Transduce.mapper id))
+    (lines_ (Pipes.Transduce.mapper id))
 
 {-| 
 
->>> PT.fold (transduce (groups (\p -> yield "x" >> p) (lines (transducer id))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+>>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines_ (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
 ("xaaxbb",())
 
 -}
+lines_ 
+    :: Transducer Continuous a e Text -- ^
+    -> Transducer Delimited a e Text -- ^
+lines_ sometrans = delimit (view Pipes.Text.lines) sometrans
+
+{-| 
+
+>>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+("xaa\nxbb\n",())
+
+-}
 lines 
-    :: Transducer' Continuous a e Text -- ^
-    -> Transducer' Delimited a e Text -- ^
-lines sometrans = delimit (view Pipes.Text.lines) sometrans
+    :: Transducer Continuous a e Text -- ^
+    -> Transducer Delimited a e Text -- ^
+lines  = groups (\p -> p <* Pipes.yield (Data.Text.singleton '\n')) . lines_
 
 {-| Plug decoding functions from @pipes-text@ here. 
 
@@ -90,7 +103,7 @@ lines sometrans = delimit (view Pipes.Text.lines) sometrans
 -}
 decoder 
     :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
-    -> Transducer' Continuous ByteString ByteString Text -- ^
+    -> Transducer Continuous ByteString ByteString Text -- ^
 decoder f = PE (\producer -> f producer >>= \producer' -> lift (do
     n <- next producer'
     case n of
@@ -100,12 +113,12 @@ decoder f = PE (\producer -> f producer >>= \producer' -> lift (do
 {-| Plug decoding functions from @pipes-text@ here. 
 
     __/BEWARE!/__ 
-    This 'Transducer'' may throw 'DecodeError' here.
+    This 'Transducer' may throw 'DecodeError' here.
     __/BEWARE!/__ 
 -}
 decoderx
     :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
-    -> Transducer' Continuous ByteString e Text -- ^
+    -> Transducer Continuous ByteString e Text -- ^
 decoderx f = P (\producer -> f producer >>= \producer' -> lift (do
     n <- next producer'
     case n of
@@ -115,31 +128,31 @@ decoderx f = P (\producer -> f producer >>= \producer' -> lift (do
 {-| 
     The first undecodable bytes will be the error value.
 
->>> PT.foldFallibly (transduce utf8 intoLazyText) (mapM_ yield ["aa"]) 
+>>> PT.foldFallibly1 (transduce1 utf8 intoLazyText) (mapM_ yield ["aa"]) 
 Right ("aa",())
 
 -}
-utf8 :: Transducer' Continuous ByteString ByteString Text -- ^
+utf8 :: Transducer Continuous ByteString ByteString Text -- ^
 utf8 = decoder decodeUtf8
 
 {-| 
 
->>> PT.fold (transduce utf8x intoLazyText) (mapM_ yield ["aa"]) 
+>>> PT.fold1  (transduce1 utf8x intoLazyText) (mapM_ yield ["aa"]) 
 ("aa",())
 
     __/BEWARE!/__ 
-    This 'Transducer'' may throw 'DecodeError'.
+    This 'Transducer' may throw 'DecodeError'.
     __/BEWARE!/__ 
 -}
-utf8x :: Transducer' Continuous ByteString e Text -- ^
+utf8x :: Transducer Continuous ByteString e Text -- ^
 utf8x = decoderx decodeUtf8
 
 {-| 
     Collect strict 'Text's into a lazy 'Text'.
 
->>> PT.fold intoLazyText (mapM_ yield ["aa","bb","cc"]) 
+>>> PT.fold1  intoLazyText (mapM_ yield ["aa","bb","cc"]) 
 ("aabbcc",())
 
 -}
-intoLazyText :: Fold' Text e Data.Text.Lazy.Text
+intoLazyText :: Fold1 Text e Data.Text.Lazy.Text
 intoLazyText = fmap Data.Text.Lazy.fromChunks (withFold Foldl.list)
