@@ -156,3 +156,4 @@ utf8x = decoderx decodeUtf8
 -}
 intoLazyText :: Fold1 Text e Data.Text.Lazy.Text
 intoLazyText = fmap Data.Text.Lazy.fromChunks (withFold Foldl.list)
+
