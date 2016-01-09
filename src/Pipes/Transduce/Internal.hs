@@ -465,9 +465,21 @@ separated f1 f2 = Fold2 (\producer1 producer2 ->
         <*>
         Conceit (foldFallibly f2 producer2))
 
-both :: Fold' b e r -> Fold2 b b e (r,r)
-both f = separated f f
-
 combined :: Transducer' Delimited b1 e x -> Transducer' Delimited b1 e x -> Fold' x e a -> Fold2 b1 b2 e a
-combined = undefined
+combined t1 t2 f = Fold2 (\producer1 producer2 -> do
+   (outbox, inbox, seal) <- spawn' (bounded 1)
+   mVar <- newMVar outbox
+   runConceit $ 
+       (\((),r1) ((),r2) (a,()) -> (a,r1,r2))
+       <$>
+       Conceit (undefined `finally` atomically seal)
+       <*>
+       Conceit (undefined `finally` atomically seal)
+       <*>
+       Conceit (foldFallibly f (fromInput inbox) `finally` atomically seal))
+  where
+    iterTLines mvar = iterT $ \textProducer -> do
+        -- the P.drain bit was difficult to figure out!!!
+        join $ withMVar mvar $ \output -> do
+            runEffect $ textProducer >-> (toOutput output >> Pipes.drain)
 

@@ -50,7 +50,6 @@
     ,   foldFallibly2
     ,   fold2
     ,   separated
-    ,   both
     ,   combined
         -- * Utilities
     ,   trip
