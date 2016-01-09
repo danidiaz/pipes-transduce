@@ -9,6 +9,11 @@
     ,   fold2
     ,   separated
     ,   combined
+        -- * Wat
+    ,   Fold2I
+    ,   foldFallibly2I
+    ,   fold2I
+    ,   promote
         -- * Building folds
         -- ** From foldl folds
         -- $foldl
