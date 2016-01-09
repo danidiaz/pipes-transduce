@@ -443,6 +443,10 @@ instance Applicative (Fold2 b1 b2 e) where
                 `finally` atomically seal1b 
                 `finally` atomically seal2b))
 
+instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
+   mempty = pure mempty
+   mappend s1 s2 = (<>) <$> s1 <*> s2
+
 {-| 
     Run a 'Fold2'.
 -}
@@ -451,7 +455,7 @@ foldFallibly2 (Fold2 s) producer1 producer2 = s producer1 producer2
 
 
 {-| 
-    Run a 'Fold2'.
+    Run a 'Fold2' that never returns an error value (but which may still throw exceptions!)
 -}
 fold2 :: Fold2 b1 b2 Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
 fold2 (Fold2 s) producer1 producer2 = liftM (either absurd id) (s producer1 producer2) 
