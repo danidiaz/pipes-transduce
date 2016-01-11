@@ -520,16 +520,14 @@ instance Applicative (Feed1Fold2 i b1 b2 e) where
             Conceit (as (toOutput outbox2p) (fromInput inbox2a) (fromInput inbox2b)  `finally` atomically seal2a `finally` atomically seal2b `finally` atomically seal2p)
             <*>
             (_Conceit $
-                (runEffect (producer1 >-> Pipes.tee (toOutput outbox1a *> Pipes.drain) 
-                                      >->           (toOutput outbox2a *> Pipes.drain)))
+                (runEffect (producer1 >-> (toOutput (outbox1a <> outbox2a) *> Pipes.drain)) 
                 `finally` atomically seal1a 
-                `finally` atomically seal2a)
+                `finally` atomically seal2a))
             <*>
             (_Conceit $
-                (runEffect (producer2 >-> Pipes.tee (toOutput outbox1b *> Pipes.drain) 
-                                      >->           (toOutput outbox2b *> Pipes.drain)))
+                (runEffect (producer2 >-> (toOutput (outbox1b <> outbox2b) *> Pipes.drain))
                 `finally` atomically seal1b 
-                `finally` atomically seal2b)
+                `finally` atomically seal2b))
             <*>
             Conceit (do
                          (runEffect $
