@@ -64,7 +64,7 @@ import Pipes.Transduce.Internal
     Split the stream into lines, collect them into lazy 'Text' values, and pass
     them downstream. 
 
->>> PT._runFold1  (transduce1 foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
+>>> PT.fold1  (transduce1 foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
 (["aaaa","bbbb"],())
 
 -}
@@ -77,7 +77,7 @@ foldedLines =
 
 {-| 
 
->>> PT._runFold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines_ (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+>>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines_ (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
 ("xaaxbb",())
 
 -}
@@ -88,7 +88,7 @@ lines_ sometrans = delimit (view Pipes.Text.lines) sometrans
 
 {-| 
 
->>> PT._runFold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+>>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
 ("xaa\nxbb\n",())
 
 -}
@@ -128,7 +128,7 @@ decoderx f = P (\producer -> f producer >>= \producer' -> lift (do
 {-| 
     The first undecodable bytes will be the error value.
 
->>> PT.runFold1 (transduce1 utf8 intoLazyText) (mapM_ yield ["aa"]) 
+>>> PT.fold1Fallibly (transduce1 utf8 intoLazyText) (mapM_ yield ["aa"]) 
 Right ("aa",())
 
 -}
@@ -137,7 +137,7 @@ utf8 = decoder decodeUtf8
 
 {-| 
 
->>> PT._runFold1  (transduce1 utf8x intoLazyText) (mapM_ yield ["aa"]) 
+>>> PT.fold1  (transduce1 utf8x intoLazyText) (mapM_ yield ["aa"]) 
 ("aa",())
 
     __/BEWARE!/__ 
@@ -150,7 +150,7 @@ utf8x = decoderx decodeUtf8
 {-| 
     Collect strict 'Text's into a lazy 'Text'.
 
->>> PT._runFold1  intoLazyText (mapM_ yield ["aa","bb","cc"]) 
+>>> PT.fold1  intoLazyText (mapM_ yield ["aa","bb","cc"]) 
 ("aabbcc",())
 
 -}

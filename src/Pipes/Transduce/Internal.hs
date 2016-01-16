@@ -222,14 +222,14 @@ withParserM f parser = withFallibleCont' $ \producer -> f $ drainage $ (Pipes.Pa
 {-| 
     Run a 'Fold1'.
 -}
-runFold1 :: Fold1 b e a -> Producer b IO r -> IO (Either e (a,r))
-runFold1 (Fold1 (unLift -> s)) = exhaustiveCont s
+fold1Fallibly :: Fold1 b e a -> Producer b IO r -> IO (Either e (a,r))
+fold1Fallibly (Fold1 (unLift -> s)) = exhaustiveCont s
 
 {-| 
     Run a 'Fold1' that never returns an error value (but which may still throw exceptions!)
 -}
-_runFold1 :: Fold1 b Void a -> Producer b IO r -> IO (a,r)
-_runFold1 (Fold1 (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
+fold1 :: Fold1 b Void a -> Producer b IO r -> IO (a,r)
+fold1 (Fold1 (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
 {-| A transformation that takes the inputs of a 'Fold1' from type @a@ to type @b@.		
 
@@ -372,8 +372,8 @@ folds somefold t = case t of
     F func -> folds somefold (P (\producer -> producer >-> mapFoldable func))
     P g -> folds somefold (S (liftF . g))
     PE g -> folds somefold (SE (liftF . g))
-    S g -> P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal._runFold1 somefold) . g)
-    SE g -> PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal._runFold1 somefold) . g)
+    S g -> P (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold1 somefold) . g)
+    SE g -> PE (Pipes.concats . transFreeT ((\action -> lift action >>= (\(b',r) -> Pipes.yield b' >> return r)) . Pipes.Transduce.Internal.fold1 somefold) . g)
 
 data Delimited
 
@@ -450,24 +450,24 @@ instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
 {-| 
     Run a 'Fold2'.
 -}
-runFold2 :: Fold2 b1 b2 e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
-runFold2 (Fold2 s) producer1 producer2 = s producer1 producer2
+fold2Fallibly :: Fold2 b1 b2 e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
+fold2Fallibly (Fold2 s) producer1 producer2 = s producer1 producer2
 
 
 {-| 
     Run a 'Fold2' that never returns an error value (but which may still throw exceptions!)
 -}
-_runFold2 :: Fold2 b1 b2 Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
-_runFold2 (Fold2 s) producer1 producer2 = liftM (either absurd id) (s producer1 producer2) 
+fold2 :: Fold2 b1 b2 Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
+fold2 (Fold2 s) producer1 producer2 = liftM (either absurd id) (s producer1 producer2) 
 
 separated :: Fold1 b1 e r1 -> Fold1 b2 e r2 -> Fold2 b1 b2 e (r1,r2)
 separated f1 f2 = Fold2 (\producer1 producer2 ->
     runConceit $
         (\(r1,x1) (r2,x2) -> ((r1,r2),x1,x2))
         <$>
-        Conceit (runFold1 f1 producer1)
+        Conceit (fold1Fallibly f1 producer1)
         <*>
-        Conceit (runFold1 f2 producer2))
+        Conceit (fold1Fallibly f2 producer2))
 
 combined :: Transducer Delimited b1 e x -> Transducer Delimited b2 e x -> Fold1 x e a -> Fold2 b1 b2 e a
 combined t1 t2 f = Fold2 (\producer1 producer2 -> do
@@ -476,11 +476,11 @@ combined t1 t2 f = Fold2 (\producer1 producer2 -> do
    runConceit $ 
        (\((),r1) ((),r2) (a,()) -> (a,r1,r2))
        <$>
-       Conceit (runFold1 (transduce1 (folds (withCont' (iterTLines lock)) t1) (pure ())) producer1 `finally` atomically seal)
+       Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t1) (pure ())) producer1 `finally` atomically seal)
        <*>
-       Conceit (runFold1 (transduce1 (folds (withCont' (iterTLines lock)) t2) (pure ())) producer2 `finally` atomically seal)
+       Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t2) (pure ())) producer2 `finally` atomically seal)
        <*>
-       Conceit (runFold1 f (fromInput inbox) `finally` atomically seal))
+       Conceit (fold1Fallibly f (fromInput inbox) `finally` atomically seal))
   where
     -- iterTLines mvar = iterT $ \textProducer -> do
     iterTLines mvar = \textProducer -> fmap (\x -> ((),x)) $ do
@@ -539,15 +539,15 @@ instance Applicative (Feed1Fold2 i b1 b2 e) where
 {-| 
     Run a 'Feed1Fold2'.
 -}
-runFeed1Fold2 :: Feed1Fold2 i b1 b2 e a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
-runFeed1Fold2 (Feed1Fold2 s) = s
+feed1fold2Fallibly :: Feed1Fold2 i b1 b2 e a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
+feed1fold2Fallibly (Feed1Fold2 s) = s
 
 
 {-| 
     Run a 'Feed1Fold2' that never returns an error value (but which may still throw exceptions!)
 -}
-_runFeed1Fold2 :: Feed1Fold2 i b1 b2 Void a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
-_runFeed1Fold2 (Feed1Fold2 s) consumer producer1 producer2 = liftM (either absurd id) (s consumer producer1 producer2) 
+feed1fold2 :: Feed1Fold2 i b1 b2 Void a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
+feed1fold2 (Feed1Fold2 s) consumer producer1 producer2 = liftM (either absurd id) (s consumer producer1 producer2) 
 
 promote :: Fold2 b1 b2 e a -> Feed1Fold2 i b1 b2 e a
 promote (Fold2 s) = Feed1Fold2 (\_ p1 p2 -> s p1 p2)

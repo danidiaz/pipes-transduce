@@ -1,8 +1,8 @@
 ﻿module Pipes.Transduce (
         -- * Producer folds
         Fold1
-    ,   runFold1
-    ,   _runFold1
+    ,   fold1Fallibly
+    ,   fold1
         -- * Building Producer folds
         -- ** From foldl folds
         -- $foldl
@@ -47,14 +47,14 @@
     ,   intercalates
         -- * Folding multiple producers
     ,   Fold2
-    ,   runFold2
-    ,   _runFold2
+    ,   fold2Fallibly
+    ,   fold2
     ,   separated
     ,   combined
         -- * Wat
     ,   Feed1Fold2
-    ,   runFeed1Fold2
-    ,   _runFeed1Fold2
+    ,   feed1fold2Fallibly
+    ,   feed1fold2
     ,   promote
         -- * Utilities
     ,   trip
@@ -96,10 +96,10 @@ import qualified Pipes.Prelude as Pipes
     Fail if the 'Producer' produces anything at all. The error value is what came
     out of the 'Producer'.
 
->>> PT.runFold1Fallibly trip (mapM_ yield ['z']) 
+>>> PT.fold1FalliblyFallibly trip (mapM_ yield ['z']) 
 Left 'z'
 
->>> PT.runFold1Fallibly trip (mapM_ yield []) 
+>>> PT.fold1FalliblyFallibly trip (mapM_ yield []) 
 Right ((),())
 -}
 trip :: Fold1 b b ()
@@ -116,7 +116,7 @@ trip = withFallibleCont' $ \producer -> do
     This 'Transducer may throw 'AssertionFailed'.
     __/BEWARE!/__ 
 
->>> PT.runFold1Fallibly tripx (mapM_ yield ['z']) 
+>>> PT.fold1FalliblyFallibly tripx (mapM_ yield ['z']) 
 *** Exception: tripx
 -}
 tripx :: Fold1 b e ()
