@@ -51,6 +51,8 @@
     ,   fold2
     ,   separated
     ,   combined
+        -- * Feeds
+    ,   Feed1
         -- * Wat
     ,   Feed1Fold2
     ,   feed1fold2Fallibly

@@ -488,6 +488,46 @@ combined t1 t2 f = Fold2 (\producer1 producer2 -> do
         withMVar mvar $ \output -> do
             runEffect $ textProducer >-> (toOutput output >> Pipes.drain)
 
+--
+newtype Feed1 b e a = Feed1 { runFeed1 :: Consumer b IO () -> IO (Either e a) } deriving Functor
+
+{-| 
+    'first' is useful to massage errors.
+-}
+instance Bifunctor (Feed1 b) where
+  bimap f g (Feed1 x) = Feed1 $ fmap (liftM  (bimap f g)) x
+
+
+{-| 
+    'pure' writes nothing to @stdin@.
+    '<*>' sequences the writes to @stdin@.
+-}
+instance Applicative (Feed1 b e) where
+  pure = Feed1 . pure . pure . pure
+  Feed1 fs <*> Feed1 as = 
+      Feed1 $ \consumer -> do
+          (outbox1,inbox1,seal1) <- spawn' (bounded 1)
+          (outbox2,inbox2,seal2) <- spawn' (bounded 1)
+          runConceit $ 
+              Conceit (runExceptT $ do
+                           r1 <- ExceptT $ (fs $ toOutput outbox1) 
+                                               `finally` atomically seal1
+                           r2 <- ExceptT $ (as $ toOutput outbox2) 
+                                               `finally` atomically seal2
+                           return $ r1 r2 
+                      )
+              <* 
+              Conceit (do
+                         (runEffect $
+                             (fromInput inbox1 >> fromInput inbox2) >-> consumer)
+                            `finally` atomically seal1
+                            `finally` atomically seal2
+                         runExceptT $ pure ()
+                      )
+
+instance (Monoid a) => Monoid (Feed1 b e a) where
+   mempty = Feed1 . pure . pure . pure $ mempty
+   mappend s1 s2 = (<>) <$> s1 <*> s2
 
 --
 newtype Feed1Fold2 i b1 b2 e a = Feed1Fold2 (forall r1 r2. Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
