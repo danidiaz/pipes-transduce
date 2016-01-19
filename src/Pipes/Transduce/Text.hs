@@ -45,7 +45,7 @@ import Pipes.Concurrent
 import Lens.Family (view)
 
 import Pipes.Transduce
-import Pipes.Transduce.Internal
+--import Pipes.Transduce.Internal
 
 {- $setup
 >>> :set -XOverloadedStrings
@@ -104,7 +104,7 @@ lines  = groups (\p -> p <* Pipes.yield (Data.Text.singleton '\n')) . lines_
 decoder 
     :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
     -> Transducer Continuous ByteString ByteString Text -- ^
-decoder f = PE (\producer -> f producer >>= \producer' -> lift (do
+decoder f = fallibleTransducer (\producer -> f producer >>= \producer' -> lift (do
     n <- next producer'
     case n of
         Left r -> return (Right r)
@@ -119,7 +119,7 @@ decoder f = PE (\producer -> f producer >>= \producer' -> lift (do
 decoderx
     :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
     -> Transducer Continuous ByteString e Text -- ^
-decoderx f = P (\producer -> f producer >>= \producer' -> lift (do
+decoderx f = transducer (\producer -> f producer >>= \producer' -> lift (do
     n <- next producer'
     case n of
         Left r -> return r
