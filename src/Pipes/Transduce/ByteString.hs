@@ -28,6 +28,7 @@ import Pipes.Transduce
 >>> :set -XOverloadedStrings
 >>> import Control.Applicative
 >>> import Control.Monad
+>>> import Pipes
 >>> import qualified Pipes.Transduce as PT
 -}
 
