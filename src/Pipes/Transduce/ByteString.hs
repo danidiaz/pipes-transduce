@@ -14,33 +14,11 @@ module Pipes.Transduce.ByteString (
 
 import Prelude hiding (lines)
 import Data.Bifunctor
-import Data.Monoid
 import Data.Void
-import Data.Foldable
 import Data.ByteString
 import qualified Data.ByteString.Lazy
-import Data.Text hiding (lines)
-import Data.Text.Encoding.Error (UnicodeException(..))
-import Control.Applicative
-import Control.Applicative.Lift
-import Control.Monad
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Free hiding (Pure)
 import qualified Control.Foldl as Foldl
-import Control.Exception
-import Pipes 
-import qualified Pipes.Text
-import Pipes.Text.Encoding (decodeUtf8) 
-import Pipes.Lift (distribute) 
---import Pipes.Prelude
 import qualified Pipes.ByteString (hGetSome)
-import qualified Pipes.Prelude as Pipes
-import qualified Pipes.Group as Pipes
-import qualified Pipes.Parse
-import qualified Pipes.Text
-import qualified Data.Text.Lazy
-import Pipes.Concurrent
-import Lens.Family (view)
 import System.IO
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
