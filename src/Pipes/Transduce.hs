@@ -10,8 +10,8 @@
 module Pipes.Transduce (
         -- * Producer folds
         Fold1
-    ,   fold1Fallibly
     ,   fold1
+    ,   fold1Fallibly
         -- * Building Producer folds
         -- ** From foldl folds
         -- $foldl
@@ -56,17 +56,19 @@ module Pipes.Transduce (
     ,   intercalates
         -- * Folding multiple producers
     ,   Fold2
-    ,   fold2Fallibly
     ,   fold2
+    ,   fold2Fallibly
     ,   separated
     ,   combined
-        -- * Feeds
-    ,   Feed1
-        -- * Wat
-    ,   Feed1Fold2
-    ,   feed1fold2Fallibly
-    ,   feed1fold2
-    ,   promote
+--        -- * Feeds
+--    ,   Feed1
+--    ,   feed1
+--    ,   feed1Fallibly
+--        -- * Building Feeds
+--    ,   withProducer
+--    ,   withProducerM
+--    ,   withSafeProducer
+--    ,   withFallibleProducer
         -- * Utilities
     ,   trip
     ,   tripx
@@ -114,10 +116,10 @@ import Lens.Family (folding)
     Fail if the 'Producer' produces anything at all. The error value is what came
     out of the 'Producer'.
 
->>> PT.fold1Fallibly trip (mapM_ yield ['z']) 
+>>> fold1Fallibly trip (mapM_ yield ['z']) 
 Left 'z'
 
->>> PT.fold1Fallibly trip (mapM_ yield []) 
+>>> fold1Fallibly trip (mapM_ yield []) 
 Right ((),())
 -}
 trip :: Fold1 b b ()
@@ -134,7 +136,7 @@ trip = withFallibleCont' $ \producer -> do
     This 'Transducer may throw 'AssertionFailed'.
     __/BEWARE!/__ 
 
->>> PT.fold1Fallibly tripx (mapM_ yield ['z']) 
+>>> fold1Fallibly tripx (mapM_ yield ['z']) 
 *** Exception: tripx
 -}
 tripx :: Fold1 b e ()
@@ -616,23 +618,39 @@ combined t1 t2 f = Fold2 (\producer1 producer2 -> do
             runEffect $ textProducer >-> (toOutput output >> Pipes.drain)
 
 --
-newtype Feed1 b e a = Feed1 { runFeed1 :: Consumer b IO () -> IO (Either e a) } deriving Functor
+newtype Feed1 b e a = Feed1 (Lift (Feed1_ b e) a) deriving (Functor)
+
+newtype Feed1_ b e a = Feed1_ { runFeed1_ :: Consumer b IO () -> IO (Either e a) } deriving Functor
+
+feed1Fallibly :: Feed1 b e a -> Consumer b IO () -> IO (Either e a)
+feed1Fallibly (Feed1 (unLift -> s)) = runFeed1_ s
+
+feed1 :: Feed1 b Void a -> Consumer b IO () -> IO a
+feed1 (Feed1 (unLift -> s)) = liftM (either absurd id) . runFeed1_ s
+
+instance Bifunctor (Feed1_ b) where
+  bimap f g (Feed1_ x) = Feed1_ $ fmap (liftM  (bimap f g)) x
 
 {-| 
     'first' is useful to massage errors.
 -}
 instance Bifunctor (Feed1 b) where
-  bimap f g (Feed1 x) = Feed1 $ fmap (liftM  (bimap f g)) x
+    bimap f g (Feed1 x) = Feed1 (case x of
+        Pure a -> Pure (g a)
+        Other o -> Other (bimap f g o))
 
+instance Applicative (Feed1 b e) where
+    pure a = Feed1 (pure a)
+    Feed1 fa <*> Feed1 a = Feed1 (fa <*> a)
 
 {-| 
     'pure' writes nothing to @stdin@.
     '<*>' sequences the writes to @stdin@.
 -}
-instance Applicative (Feed1 b e) where
-  pure = Feed1 . pure . pure . pure
-  Feed1 fs <*> Feed1 as = 
-      Feed1 $ \consumer -> do
+instance Applicative (Feed1_ b e) where
+  pure = Feed1_ . pure . pure . pure
+  Feed1_ fs <*> Feed1_ as = 
+      Feed1_ $ \consumer -> do
           (outbox1,inbox1,seal1) <- spawn' (bounded 1)
           (outbox2,inbox2,seal2) <- spawn' (bounded 1)
           runConceit $ 
@@ -653,68 +671,17 @@ instance Applicative (Feed1 b e) where
                       )
 
 instance (Monoid a) => Monoid (Feed1 b e a) where
-   mempty = Feed1 . pure . pure . pure $ mempty
+   mempty = pure mempty
    mappend s1 s2 = (<>) <$> s1 <*> s2
 
---
-newtype Feed1Fold2 i b1 b2 e a = Feed1Fold2 (forall r1 r2. Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
+withProducer :: Producer b IO r -> Feed1 b e ()
+withProducer producer = Feed1 . Other . Feed1_ $ \consumer -> fmap pure $ runEffect (void producer >-> consumer) 
 
-instance Bifunctor (Feed1Fold2 i b1 b2) where
-    bimap f g (Feed1Fold2 s) = Feed1Fold2 (fmap (fmap (fmap (fmap (bimap f (\(x1,x2,x3) -> (g x1,x2,x3)))))) s)
+withProducerM :: MonadIO m => (m () -> IO (Either e a)) -> Producer b m r -> Feed1 b e a 
+withProducerM whittle producer = Feed1 . Other . Feed1_ $ \consumer -> whittle $ runEffect (void producer >-> hoist liftIO consumer) 
 
-instance Applicative (Feed1Fold2 i b1 b2 e) where
-    pure a = Feed1Fold2 (\_ producer1 producer2 -> do
-        (r1,r2) <- _runConceit $
-            (,)
-            <$>
-            _Conceit (runEffect (producer1 >-> Pipes.drain))
-            <*>
-            _Conceit (runEffect (producer2 >-> Pipes.drain))
-        pure (Right (a,r1,r2)))
+withSafeProducer :: Producer b (SafeT IO) r -> Feed1 b e ()
+withSafeProducer = withProducerM (fmap pure . runSafeT)
 
-    Feed1Fold2 fs <*> Feed1Fold2 as = Feed1Fold2 (\consumer producer1 producer2 -> do
-        (outbox1a,inbox1a,seal1a) <- spawn' (bounded 1)
-        (outbox2a,inbox2a,seal2a) <- spawn' (bounded 1)
-        (outbox1b,inbox1b,seal1b) <- spawn' (bounded 1)
-        (outbox2b,inbox2b,seal2b) <- spawn' (bounded 1)
-        (outbox1p,inbox1p,seal1p) <- spawn' (bounded 1)
-        (outbox2p,inbox2p,seal2p) <- spawn' (bounded 1)
-        runConceit $
-            (\(f,(),()) (x,(),()) r1 r2 _ -> (f x,r1,r2))
-            <$>
-            Conceit (fs (toOutput outbox1p) (fromInput inbox1a) (fromInput inbox1b)  `finally` atomically seal1a `finally` atomically seal1b `finally` atomically seal1p)
-            <*>
-            Conceit (as (toOutput outbox2p) (fromInput inbox2a) (fromInput inbox2b)  `finally` atomically seal2a `finally` atomically seal2b `finally` atomically seal2p)
-            <*>
-            (_Conceit $
-                (runEffect (producer1 >-> (toOutput (outbox1a <> outbox2a) *> Pipes.drain)) 
-                `finally` atomically seal1a 
-                `finally` atomically seal2a))
-            <*>
-            (_Conceit $
-                (runEffect (producer2 >-> (toOutput (outbox1b <> outbox2b) *> Pipes.drain))
-                `finally` atomically seal1b 
-                `finally` atomically seal2b))
-            <*>
-            Conceit (do
-                         (runEffect $
-                             (fromInput inbox1p >> fromInput inbox2p) >-> consumer)
-                            `finally` atomically seal1p
-                            `finally` atomically seal2p
-                         runExceptT $ pure ()))
-
-{-| 
-    Run a 'Feed1Fold2'.
--}
-feed1fold2Fallibly :: Feed1Fold2 i b1 b2 e a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
-feed1fold2Fallibly (Feed1Fold2 s) = s
-
-
-{-| 
-    Run a 'Feed1Fold2' that never returns an error value (but which may still throw exceptions!)
--}
-feed1fold2 :: Feed1Fold2 i b1 b2 Void a -> Consumer i IO () -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
-feed1fold2 (Feed1Fold2 s) consumer producer1 producer2 = liftM (either absurd id) (s consumer producer1 producer2) 
-
-promote :: Fold2 b1 b2 e a -> Feed1Fold2 i b1 b2 e a
-promote (Fold2 s) = Feed1Fold2 (\_ p1 p2 -> s p1 p2)
+withFallibleProducer :: Producer b (ExceptT e IO) r -> Feed1 b e ()
+withFallibleProducer = withProducerM runExceptT
