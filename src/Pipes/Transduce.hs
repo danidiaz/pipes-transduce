@@ -12,13 +12,13 @@ module Pipes.Transduce (
         Fold1
     ,   fold1
     ,   fold1Fallibly
-        -- * Building Producer folds
-        -- ** From foldl folds
+        -- ** Building producer folds
+        -- *** From foldl folds
         -- $foldl
     ,   withFold 
     ,   withFoldIO 
     ,   withFallibleFold
-        -- ** From consumers
+        -- *** From consumers
         -- $consumers
     ,   withConsumer 
     ,   withConsumer' 
@@ -26,11 +26,11 @@ module Pipes.Transduce (
     ,   withConsumerM' 
     ,   withSafeConsumer 
     ,   withFallibleConsumer 
-        -- ** From parsers
+        -- *** From parsers
         -- $parsers
     ,   withParser 
     ,   withParserM 
-        -- ** From continuations
+        -- *** From continuations
         -- $continuations
     ,   withCont 
     ,   withCont' 
@@ -41,23 +41,26 @@ module Pipes.Transduce (
     ,   Delimited
     ,   Continuous
     ,   transduce1
-        -- * Building fold transducers
+        -- ** Building fold transducers
     ,   mapper 
     ,   fallibleMapper 
     ,   mapperFoldable 
     ,   mapperEnumerable 
     ,   transducer
     ,   fallibleTransducer
-        -- * Transducer group operations
+        -- ** Transducer group operations
     ,   delimit
     ,   groups
     ,   folds
     ,   concats
     ,   intercalates
-        -- * Folding multiple producers
+        -- * Multiple producer folds
     ,   Fold2
     ,   fold2
     ,   fold2Fallibly
+        -- ** Building multiple producer folds
+    ,   liftFirst
+    ,   liftSecond
     ,   separated
     ,   combined
 --        -- * Feeds
@@ -76,7 +79,7 @@ module Pipes.Transduce (
 
 
 import Data.Bifunctor
-import Data.Monoid
+import Data.Monoid hiding (First)
 import Data.Void
 import Data.Foldable
 import Control.Applicative
@@ -174,7 +177,7 @@ tripx = withFallibleCont' $ \producer -> do
     returning a value of type @a@, except when it fails early with an error of
     type @e@.
 -}
-newtype Fold1 b e a = Fold1 (Lift (Fold1_ b e) a) deriving (Functor)
+newtype Fold1 b e a = Fold1 { runFold1 :: Lift (Fold1_ b e) a } deriving (Functor)
 
 data Fold1_ b e a = 
          TrueFold (Foldl.FoldM (ExceptT e IO) b a)
@@ -535,7 +538,26 @@ intercalates p t =  case t of
 
 newtype Fold2 b1 b2 e a = Fold2 (Lift (Fold2_ b1 b2 e) a) deriving (Functor)
 
-newtype Fold2_ b1 b2 e a = Fold2_ (forall r1 r2. Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
+data Fold2_ b1 b2 e a = 
+      First (Fold1_ b1 e a)
+    | Second (Fold1_ b2 e a)
+    | Both (forall r1 r2. Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))) deriving (Functor)
+
+fold2Fallibly_ :: Fold2_ b1 b2 e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
+fold2Fallibly_ theFold producer1 producer2 = case theFold of
+        Both f -> f producer1 producer2
+        First f -> runConceit $
+            (\(r1,x1) (_,x2) -> (r1,x1,x2))
+            <$>
+            Conceit (exhaustiveCont f producer1)
+            <*>
+            Conceit (fold1Fallibly (pure ()) producer2)
+        Second f -> runConceit $
+            (\(_,x1) (r2,x2) -> (r2,x1,x2))
+            <$>
+            Conceit (fold1Fallibly (pure ()) producer1)
+            <*>
+            Conceit (exhaustiveCont f producer2)
 
 instance Bifunctor (Fold2 b1 b2) where
     bimap f g (Fold2 x) = Fold2 (case x of
@@ -543,23 +565,18 @@ instance Bifunctor (Fold2 b1 b2) where
         Other o -> Other (bimap f g o))
 
 instance Bifunctor (Fold2_ b1 b2) where
-    bimap f g (Fold2_ s) = Fold2_ (fmap (fmap (fmap (bimap f (\(x1,x2_,x3) -> (g x1,x2_,x3))))) s) 
+    bimap f g (First s) = First (bimap f g s) 
+    bimap f g (Second s) = Second (bimap f g s) 
+    bimap f g (Both s) = Both (fmap (fmap (fmap (bimap f (\(x1,x2,x3) -> (g x1,x2,x3))))) s) 
 
 instance Applicative (Fold2 b1 b2 e) where
     pure a = Fold2 (pure a)
     Fold2 fa <*> Fold2 a = Fold2 (fa <*> a)
 
 instance Applicative (Fold2_ b1 b2 e) where
-    pure a = Fold2_ (\producer1 producer2 -> do
-        (r1,r2) <- _runConceit $
-            (,)
-            <$>
-            _Conceit (runEffect (producer1 >-> Pipes.drain))
-            <*>
-            _Conceit (runEffect (producer2 >-> Pipes.drain))
-        pure (Right (a,r1,r2)))
+    pure a = fmap (const a) (separated_ (pure ()) (pure ()))
 
-    Fold2_ fs <*> Fold2_ as = Fold2_ (\producer1 producer2 -> do
+    Both fs <*> Both as = Both (\producer1 producer2 -> do
         (outbox1a,inbox1a,seal1a) <- spawn' (bounded 1)
         (outbox2a,inbox2a,seal2a) <- spawn' (bounded 1)
         (outbox1b,inbox1b,seal1b) <- spawn' (bounded 1)
@@ -582,6 +599,14 @@ instance Applicative (Fold2_ b1 b2 e) where
                                       >->           (toOutput outbox2b *> Pipes.drain)))
                 `finally` atomically seal1b 
                 `finally` atomically seal2b))
+    First fs <*> First as = First (fs <*> as)
+    Second fs <*> Second as = Second (fs <*> as)
+    First fs <*> Second as = uncurry ($) <$> separated_ fs as
+    Second fs <*> First as = uncurry (flip ($)) <$> separated_ as fs
+    First fs <*> Both as =  (\(f,()) x -> f x) <$> separated_ fs (pure ()) <*> Both as 
+    Both fs <*> First as =  (\f (x,()) -> f x) <$> Both fs <*> separated_ as (pure ())
+    Second fs <*> Both as = (\((),f) x -> f x) <$> separated_ (pure ()) fs <*> Both as 
+    Both fs <*> Second as = (\f ((),x) -> f x) <$> Both fs <*> separated_ (pure ()) as 
 
 instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
    mempty = pure mempty
@@ -591,7 +616,7 @@ instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
     Run a 'Fold2'.
 -}
 fold2Fallibly :: Fold2 b1 b2 e a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (Either e (a,r1,r2))
-fold2Fallibly (Fold2 (unLift -> (Fold2_ s))) = s 
+fold2Fallibly (Fold2 (fold2Fallibly_ . unLift -> s)) = s 
 
 
 {-| 
@@ -600,17 +625,26 @@ fold2Fallibly (Fold2 (unLift -> (Fold2_ s))) = s
 fold2 :: Fold2 b1 b2 Void a -> Producer b1 IO r1 -> Producer b2 IO r2 -> IO (a,r1,r2)
 fold2 s producer1 producer2 = liftM (either absurd id) (fold2Fallibly s producer1 producer2) 
 
-separated :: Fold1 b1 e r1 -> Fold1 b2 e r2 -> Fold2 b1 b2 e (r1,r2)
-separated f1 f2 = Fold2 (Other (Fold2_ (\producer1 producer2 ->
+liftFirst :: Fold1 b1 e r1 -> Fold2 b1 b2 e r1
+liftFirst (unLift . runFold1 -> f1) = Fold2 (Other (First f1))
+
+liftSecond :: Fold1 b2 e r1 -> Fold2 b1 b2 e r1
+liftSecond (unLift . runFold1 -> f1) = Fold2 (Other (Second f1))
+
+separated_ :: Fold1_ b1 e r1 -> Fold1_ b2 e r2 -> Fold2_ b1 b2 e (r1,r2)
+separated_ f1 f2 = Both (\producer1 producer2 ->
     runConceit $
         (\(r1,x1) (r2,x2) -> ((r1,r2),x1,x2))
         <$>
-        Conceit (fold1Fallibly f1 producer1)
+        Conceit (exhaustiveCont f1 producer1)
         <*>
-        Conceit (fold1Fallibly f2 producer2))))
+        Conceit (exhaustiveCont f2 producer2))
+
+separated :: Fold1 b1 e r1 -> Fold1 b2 e r2 -> Fold2 b1 b2 e (r1,r2)
+separated f1 f2 = Fold2 (Other (separated_ (unLift . runFold1 $ f1) (unLift . runFold1 $ f2)))
 
 combined :: Transducer Delimited b1 e x -> Transducer Delimited b2 e x -> Fold1 x e a -> Fold2 b1 b2 e a
-combined t1 t2 f = Fold2 (Other (Fold2_ (\producer1 producer2 -> do
+combined t1 t2 f = Fold2 (Other (Both (\producer1 producer2 -> do
    (outbox, inbox, seal) <- spawn' (bounded 1)
    lock <- newMVar outbox
    runConceit $ 
