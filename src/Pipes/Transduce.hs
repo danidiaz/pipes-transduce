@@ -63,15 +63,6 @@ module Pipes.Transduce (
     ,   liftSecond
     ,   separated
     ,   combined
---        -- * Feeds
---    ,   Feed1
---    ,   feed1
---    ,   feed1Fallibly
---        -- * Building Feeds
---    ,   withProducer
---    ,   withProducerM
---    ,   withSafeProducer
---    ,   withFallibleProducer
         -- * Utilities
     ,   trip
     ,   tripx
@@ -662,71 +653,3 @@ combined t1 t2 f = Fold2 (Other (Both (\producer1 producer2 -> do
         withMVar mvar $ \output -> do
             runEffect $ textProducer >-> (toOutput output >> Pipes.drain)
 
---
-newtype Feed1 b e a = Feed1 (Lift (Feed1_ b e) a) deriving (Functor)
-
-newtype Feed1_ b e a = Feed1_ { runFeed1_ :: Consumer b IO () -> IO (Either e a) } deriving Functor
-
-feed1Fallibly :: Feed1 b e a -> Consumer b IO () -> IO (Either e a)
-feed1Fallibly (Feed1 (unLift -> s)) = runFeed1_ s
-
-feed1 :: Feed1 b Void a -> Consumer b IO () -> IO a
-feed1 (Feed1 (unLift -> s)) = liftM (either absurd id) . runFeed1_ s
-
-instance Bifunctor (Feed1_ b) where
-  bimap f g (Feed1_ x) = Feed1_ $ fmap (liftM  (bimap f g)) x
-
-{-| 
-    'first' is useful to massage errors.
--}
-instance Bifunctor (Feed1 b) where
-    bimap f g (Feed1 x) = Feed1 (case x of
-        Pure a -> Pure (g a)
-        Other o -> Other (bimap f g o))
-
-instance Applicative (Feed1 b e) where
-    pure a = Feed1 (pure a)
-    Feed1 fa <*> Feed1 a = Feed1 (fa <*> a)
-
-{-| 
-    'pure' writes nothing to @stdin@.
-    '<*>' sequences the writes to @stdin@.
--}
-instance Applicative (Feed1_ b e) where
-  pure = Feed1_ . pure . pure . pure
-  Feed1_ fs <*> Feed1_ as = 
-      Feed1_ $ \consumer -> do
-          (outbox1,inbox1,seal1) <- spawn' (bounded 1)
-          (outbox2,inbox2,seal2) <- spawn' (bounded 1)
-          runConceit $ 
-              Conceit (runExceptT $ do
-                           r1 <- ExceptT $ (fs $ toOutput outbox1) 
-                                               `finally` atomically seal1
-                           r2 <- ExceptT $ (as $ toOutput outbox2) 
-                                               `finally` atomically seal2
-                           return $ r1 r2 
-                      )
-              <* 
-              Conceit (do
-                         (runEffect $
-                             (fromInput inbox1 >> fromInput inbox2) >-> consumer)
-                            `finally` atomically seal1
-                            `finally` atomically seal2
-                         runExceptT $ pure ()
-                      )
-
-instance (Monoid a) => Monoid (Feed1 b e a) where
-   mempty = pure mempty
-   mappend s1 s2 = (<>) <$> s1 <*> s2
-
-withProducer :: Producer b IO r -> Feed1 b e ()
-withProducer producer = Feed1 . Other . Feed1_ $ \consumer -> fmap pure $ runEffect (void producer >-> consumer) 
-
-withProducerM :: MonadIO m => (m () -> IO (Either e a)) -> Producer b m r -> Feed1 b e a 
-withProducerM whittle producer = Feed1 . Other . Feed1_ $ \consumer -> whittle $ runEffect (void producer >-> hoist liftIO consumer) 
-
-withSafeProducer :: Producer b (SafeT IO) r -> Feed1 b e ()
-withSafeProducer = withProducerM (fmap pure . runSafeT)
-
-withFallibleProducer :: Producer b (ExceptT e IO) r -> Feed1 b e ()
-withFallibleProducer = withProducerM runExceptT
