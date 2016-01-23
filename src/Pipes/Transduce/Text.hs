@@ -47,7 +47,7 @@ import Pipes.Transduce
     Split the stream into lines, collect them into lazy 'Text' values, and pass
     them downstream. 
 
->>> PT.fold1  (transduce1 foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
+>>> PT.fold1 (transduce1 foldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
 (["aaaa","bbbb"],())
 
 -}
@@ -59,8 +59,9 @@ foldedLines =
     (lines_ (Pipes.Transduce.mapper id))
 
 {-| 
+    Split into lines, eliding newlines.
 
->>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines_ (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+>>> PT.fold1 (transduce1 (concats . groups (\p -> yield "x" *> p) . lines_ $ utf8x) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
 ("xaaxbb",())
 
 -}
@@ -70,8 +71,9 @@ lines_
 lines_ sometrans = delimit (view Pipes.Text.lines) sometrans
 
 {-| 
+    Split into lines, preserving newlines.
 
->>> PT.fold1  (transduce1 (concats (groups (\p -> yield "x" >> p) (lines (transducer id)))) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
+>>> PT.fold1 (transduce1 (concats . groups (\p -> yield "x" *> p) . lines $ utf8x) intoLazyText) (mapM_ yield ["aa\n","bb"]) 
 ("xaa\nxbb\n",())
 
 -}
@@ -96,7 +98,7 @@ decoder f = fallibleTransducer (\producer -> f producer >>= \producer' -> lift (
 {-| Plug decoding functions from @pipes-text@ here. 
 
     __/BEWARE!/__ 
-    This 'Transducer' may throw 'DecodeError' here.
+    This 'Transducer' may throw 'DecodeError'.
     __/BEWARE!/__ 
 -}
 decoderx
