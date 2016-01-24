@@ -528,9 +528,9 @@ intercalates p t =  case t of
 
 
 {-| 
-    A computation in 'IO' that consumes concurrently (and completely drains)
-    two 'Producer's of @b@ values, returning a value of type @a@, except when it
-    fails early with an error of type @e@.
+    A computation in 'IO' that completely drains two 'Producer's of @b@ values
+    in a concurrent way, returning a value of type @a@, except when it fails early
+    with an error of type @e@.
 -}
 newtype Fold2 b1 b2 e a = Fold2 (Lift (Fold2_ b1 b2 e) a) deriving (Functor)
 
@@ -637,28 +637,33 @@ separated_ f1 f2 = Both (\producer1 producer2 ->
         Conceit (exhaustiveCont f2 producer2))
 
 {-|
-    Consume the producers concurrently, and each one independently of the other. 
+    Consume the producers concurrently, each one independently of the other. 
 -}
 separated :: Fold1 b1 e r1 -> Fold1 b2 e r2 -> Fold2 b1 b2 e (r1,r2)
 separated f1 f2 = Fold2 (Other (separated_ (unLift . runFold1 $ f1) (unLift . runFold1 $ f2)))
 
 {-|
     Consume the producers concurrently, delimiting groups in each producer,
-and writing the groups into a common 'Fold1'. 
+    and writing the groups into a common 'Fold1'. 
 
-    Possible use: find lines in two text producers and combine them in a single
-stream, preserving the integrity of each individual line.
+    Possible use: find lines in two text producers and combine the lines in a
+    single stream, preserving the integrity of each individual line.
 -}
 combined :: Transducer Delimited b1 e x -> Transducer Delimited b2 e x -> Fold1 x e a -> Fold2 b1 b2 e a
 combined t1 t2 f = Fold2 (Other (Both (\producer1 producer2 -> do
    (outbox, inbox, seal) <- spawn' (bounded 1)
    lock <- newMVar outbox
    runConceit $ 
-       (\((),r1) ((),r2) (a,()) -> (a,r1,r2))
+       (\(((),r1),((),r2)) (a,()) -> (a,r1,r2))
        <$>
-       Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t1) (pure ())) producer1 `finally` atomically seal)
-       <*>
-       Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t2) (pure ())) producer2 `finally` atomically seal)
+       Conceit 
+           ((runConceit $
+               (,)
+               <$>
+               Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t1) (pure ())) producer1)
+               <*>
+               Conceit (fold1Fallibly (transduce1 (folds (withCont' (iterTLines lock)) t2) (pure ())) producer2)
+           ) `finally` atomically seal)
        <*>
        Conceit (fold1Fallibly f (fromInput inbox) `finally` atomically seal))))
   where

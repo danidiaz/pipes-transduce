@@ -1,10 +1,20 @@
+0.3.1.0
+=======
+
+- Solved bug in "combined, added a test.
+
 0.3.0.0
+=======
+
 - Dropped unneeded deps.
 
 0.2.3.0
+=======
+
 - More efficient Applicative for Fold2
 
 0.2.0.0
+=======
 
 - Added folds of two Producers.
 - Name changes.
