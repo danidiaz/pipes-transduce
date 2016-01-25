@@ -8,6 +8,7 @@ module Pipes.Transduce.Text (
     ,   lines_
         -- * Grouping
     ,   foldedLines
+    ,   eachLine
         -- * Decoding
     ,   decoder
     ,   decoderx
@@ -18,14 +19,17 @@ module Pipes.Transduce.Text (
 import Prelude hiding (lines)
 import Data.ByteString
 import qualified Data.Text 
+import qualified Data.Text.Lazy
 import Data.Text hiding (lines)
 import Data.Text.Encoding.Error (UnicodeException(..))
 import qualified Control.Foldl as Foldl
 import Control.Exception
+import Control.Monad
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Except
 import Pipes 
 import qualified Pipes.Text
 import Pipes.Text.Encoding (decodeUtf8) 
-import qualified Data.Text.Lazy
 import Lens.Family (view)
 
 import Pipes.Transduce
@@ -57,6 +61,19 @@ foldedLines =
     Pipes.Transduce.folds 
     (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.withFold Foldl.list)) 
     (lines_ (Pipes.Transduce.mapper id))
+
+
+{-| 
+    Split the stream into lines, collect them into lazy 'Text' values, and
+    apply an effectul function to each line.
+
+>>> PT.fold1Fallibly (eachLine $ \l -> pure $ if TL.head l == 'b' then (Left l) else (Right ())) (mapM_ yield ["aa","\nbb"]) 
+Left "bb"
+
+-}
+eachLine :: (Data.Text.Lazy.Text -> IO (Either e ())) -> Fold1 Data.Text.Text e ()
+eachLine action = transduce1 foldedLines (withFallibleConsumer (forever (do
+    await >>= lift . ExceptT . action)))
 
 {-| 
     Split into lines, eliding newlines.
