@@ -24,6 +24,7 @@ import Data.Text hiding (lines)
 import Data.Text.Encoding.Error (UnicodeException(..))
 import qualified Control.Foldl as Foldl
 import Control.Exception
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
