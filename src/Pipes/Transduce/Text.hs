@@ -1,4 +1,4 @@
-﻿{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Pipes.Transduce.Text (
         -- * Collecting input
@@ -31,7 +31,6 @@ import Control.Monad.Trans.Except
 import Pipes 
 import qualified Pipes.Text
 import Pipes.Text.Encoding (decodeUtf8) 
-import Lens.Family (view)
 
 import Pipes.Transduce
 
@@ -159,4 +158,11 @@ utf8x = decoderx decodeUtf8
 -}
 intoLazyText :: Fold1 Text e Data.Text.Lazy.Text
 intoLazyText = fmap Data.Text.Lazy.fromChunks (withFold Foldl.list)
+
+-- Lens stuff
+type Getting r s a = (a -> Const r a) -> s -> Const r s
+
+view :: Getting a s a -> s -> a
+view l s = getConst (l Const s)
+{-# INLINE view #-}
 

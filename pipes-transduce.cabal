@@ -1,5 +1,5 @@
 Name: pipes-transduce
-Version: 0.3.3.0
+Version: 0.3.4.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -38,8 +38,7 @@ Library
         pipes-text    >= 0.0.1.0           ,
         pipes-bytestring                   ,
         void          >= 0.6               ,
-        conceit       >= 0.4.0.0           ,
-        lens-family-core >= 1.1
+        conceit       >= 0.4.0.0           
     Exposed-Modules:
         Pipes.Transduce
         Pipes.Transduce.ByteString

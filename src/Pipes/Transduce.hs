@@ -1,4 +1,4 @@
-﻿{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -73,6 +73,7 @@ import Data.Bifunctor
 import Data.Monoid hiding (First)
 import Data.Void
 import Data.Foldable
+import Data.Functor.Constant
 import Control.Applicative
 import Control.Applicative.Lift
 import Control.Monad
@@ -90,7 +91,6 @@ import qualified Pipes.Group as Pipes
 import qualified Pipes.Parse
 import Pipes.Concurrent
 import Pipes.Safe (SafeT, runSafeT)
-import Lens.Family (folding)
 
 
 {- $setup
@@ -672,4 +672,17 @@ combined t1 t2 f = Fold2 (Other (Both (\producer1 producer2 -> do
         -- the P.drain bit was difficult to figure out!!!
         withMVar mvar $ \output -> do
             runEffect $ textProducer >-> (toOutput output >> Pipes.drain)
+
+-- Lens stuff
+type LensLike f a a' b b' = (b -> f b') -> a -> f a'
+
+folding :: (Foldable g, PhantomX f, Applicative f) => (a -> g b) -> LensLike f a a' b b'
+folding p f = coerce . traverse_ f . p
+{-# INLINE folding #-}
+
+class Functor f => PhantomX f where
+    coerce :: f a -> f b
+
+instance PhantomX (Constant a) where
+    coerce (Constant x) = (Constant x)
 

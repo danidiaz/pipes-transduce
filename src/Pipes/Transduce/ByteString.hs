@@ -1,4 +1,4 @@
-﻿{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Pipes.Transduce.ByteString (
