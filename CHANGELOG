@@ -1,8 +1,14 @@
+0.4.0.0
+=======
+
+- depend on microlens
+- compatibility with foldl 1.2.
+
 0.3.4.0
 =======
 
-- Removed lens-family dependency.
-- Solved BOM problem.
+- removed lens-family dependency.
+- solved bom problem.
 
 0.3.3.0
 =======
