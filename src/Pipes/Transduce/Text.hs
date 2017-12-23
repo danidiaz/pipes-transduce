@@ -1,22 +1,27 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Pipes.Transduce.Text (
-        -- * Collecting input
-        intoLazyText 
-        -- * Splitting
-    ,   lines
-    ,   lines_
-        -- * Grouping
-    ,   foldedLines
+        -- * Text folds
+        asUtf8
+    ,   asUtf8x
+    ,   intoLazyText 
+    ,   Line
+    ,   asFoldedLines
     ,   eachLine
-        -- * Decoding
+        -- * Text transducers
+        -- ** Decoding
     ,   decoder
     ,   decoderx
     ,   utf8
     ,   utf8x
+        -- ** Splitting
+    ,   lines
+    ,   lines_
+    ,   foldedLines
     ) where
 
 import Prelude hiding (lines)
+import Data.Bifunctor
 import Data.ByteString
 import qualified Data.Text 
 import qualified Data.Text.Lazy
@@ -48,6 +53,11 @@ import Pipes.Transduce
 -}
 
 {-| 
+    Lines are represented as lazy 'Data.Text.Lazy.Text' values.
+-}
+type Line = Data.Text.Lazy.Text 
+
+{-| 
     Split the stream into lines, collect them into lazy 'Text' values, and pass
     them downstream. 
 
@@ -56,12 +66,20 @@ import Pipes.Transduce
 
 -}
 foldedLines 
-    :: Transducer Continuous Text e Data.Text.Lazy.Text 
+    :: Transducer Continuous Text e Line
 foldedLines = 
     Pipes.Transduce.folds 
     (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.withFold Foldl.list)) 
     (lines_ (Pipes.Transduce.mapper id))
 
+{-| 
+
+>>> PT.fold1 (asFoldedLines (withFold L.list)) (mapM_ yield ["aa","aa\nbb","bb"]) 
+(["aaaa","bbbb"],())
+
+-}
+asFoldedLines :: Fold1 Line e r -> Fold1 Text e r
+asFoldedLines = transduce1 foldedLines 
 
 {-| 
     Split the stream into lines, collect them into lazy 'Text' values, and
@@ -71,7 +89,7 @@ foldedLines =
 Left "bb"
 
 -}
-eachLine :: (Data.Text.Lazy.Text -> IO (Either e ())) -> Fold1 Data.Text.Text e ()
+eachLine :: (Line -> IO (Either e ())) -> Fold1 Data.Text.Text e ()
 eachLine action = transduce1 foldedLines (withFallibleConsumer (forever (do
     await >>= lift . ExceptT . action)))
 
@@ -148,6 +166,27 @@ utf8 = decoder decodeUtf8
 -}
 utf8x :: Transducer Continuous ByteString e Text -- ^
 utf8x = decoderx decodeUtf8
+
+{-| 
+
+>>> PT.fold1Fallibly  (asUtf8 id intoLazyText) (mapM_ yield ["aa"]) 
+Right ("aa",())
+ 
+ -}
+asUtf8 :: (ByteString -> e) -> Fold1 Text e r -> Fold1 ByteString e r
+asUtf8 erradapt = transduce1 (first erradapt utf8)
+
+{-| 
+
+>>> PT.fold1  (asUtf8x intoLazyText) (mapM_ yield ["aa"]) 
+("aa",())
+ 
+    __/BEWARE!/__ 
+    This 'Transducer' may throw 'DecodeError'.
+    __/BEWARE!/__ 
+ -}
+asUtf8x :: Fold1 Text e r -> Fold1 ByteString e r
+asUtf8x = transduce1 utf8x
 
 {-| 
     Collect strict 'Text's into a lazy 'Text'.
