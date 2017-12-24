@@ -44,6 +44,7 @@ Library
         Pipes.Transduce
         Pipes.Transduce.ByteString
         Pipes.Transduce.Text
+        Pipes.Transduce.Internal
     GHC-Options: -O2 -Wall
 
 test-suite doctests

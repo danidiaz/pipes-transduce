@@ -1,3 +1,10 @@
+0.4.5.0
+=======
+
+- The transducer1/Transducer thing is kind of akward. De-emphasized in the docs.docs
+- Added asUtf8, asUtf8x, asFoldedLines.
+- New Pipes.Transduce.Internal module.
+
 0.4.0.0
 =======
 

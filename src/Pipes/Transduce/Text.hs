@@ -1,13 +1,17 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Pipes.Transduce.Text (
         -- * Text folds
         asUtf8
     ,   asUtf8x
+    ,   bothAsUtf8x
     ,   intoLazyText 
     ,   Line
     ,   asFoldedLines
     ,   eachLine
+    ,   combinedLines
+    ,   combinedLinesPrefixing
         -- * Text transducers
         -- ** Decoding
     ,   decoder
@@ -30,6 +34,7 @@ import Data.Text.Encoding.Error (UnicodeException(..))
 import qualified Control.Foldl as Foldl
 import Control.Exception
 import Control.Applicative
+import Control.Applicative.Lift
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -37,7 +42,7 @@ import Pipes
 import qualified Pipes.Text
 import Pipes.Text.Encoding (decodeUtf8) 
 
-import Pipes.Transduce
+import Pipes.Transduce.Internal
 
 {- $setup
 >>> :set -XOverloadedStrings
@@ -68,9 +73,9 @@ type Line = Data.Text.Lazy.Text
 foldedLines 
     :: Transducer Continuous Text e Line
 foldedLines = 
-    Pipes.Transduce.folds 
-    (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.withFold Foldl.list)) 
-    (lines_ (Pipes.Transduce.mapper id))
+    Pipes.Transduce.Internal.folds 
+    (fmap Data.Text.Lazy.fromChunks (Pipes.Transduce.Internal.withFold Foldl.list)) 
+    (lines_ (Pipes.Transduce.Internal.mapper id))
 
 {-| 
 
@@ -92,6 +97,27 @@ Left "bb"
 eachLine :: (Line -> IO (Either e ())) -> Fold1 Data.Text.Text e ()
 eachLine action = transduce1 foldedLines (withFallibleConsumer (forever (do
     await >>= lift . ExceptT . action)))
+
+{-| 
+    Process two streams of text, combined as a single text stream.
+
+    The streams are combined line by line, but the resulting stream is not divided.
+-}
+combinedLines :: Fold1 Text e r -> Fold2 Text Text e r
+combinedLines = 
+    combined (Pipes.Transduce.Text.lines (transducer id)) 
+             (Pipes.Transduce.Text.lines (transducer id))
+
+{-| 
+    Like 'combinedLines', but adding different prefixes to lines from stdout
+    and stderr.
+-}
+combinedLinesPrefixing :: Text -> Text -> Fold1 Text e r -> Fold2 Text Text e r
+combinedLinesPrefixing outprefix errprefix = 
+    let tag prefix = groups (\producer -> Pipes.yield prefix *> producer)
+    in
+    combined (tag outprefix (Pipes.Transduce.Text.lines (transducer id))) 
+             (tag errprefix (Pipes.Transduce.Text.lines (transducer id)))
 
 {-| 
     Split into lines, eliding newlines.
@@ -145,6 +171,15 @@ decoderx f = transducer (\producer -> f producer >>= \producer' -> lift (do
         Left r -> return r
         Right b -> throwIO (DecodeError "transducer decoding error" (Just (Data.ByteString.head (fst b)))))) 
 
+decoderx'
+    :: (forall r. Producer ByteString IO r -> Producer Text IO (Producer ByteString IO r))
+    -> Producer ByteString IO r -> Producer Text IO r 
+decoderx' f = (\producer -> f producer >>= \producer' -> lift (do
+    n <- next producer'
+    case n of
+        Left r -> return r
+        Right b -> throwIO (DecodeError "transducer decoding error" (Just (Data.ByteString.head (fst b)))))) 
+
 {-| 
     The first undecodable bytes will be the error value.
 
@@ -187,6 +222,21 @@ asUtf8 erradapt = transduce1 (first erradapt utf8)
  -}
 asUtf8x :: Fold1 Text e r -> Fold1 ByteString e r
 asUtf8x = transduce1 utf8x
+
+{-| 
+    __/BEWARE!/__ 
+    This 'Transducer' may throw 'DecodeError'.
+    __/BEWARE!/__ 
+ -}
+bothAsUtf8x :: Fold2 Text Text e r -> Fold2 ByteString ByteString e r
+bothAsUtf8x (Fold2 (unLift -> f)) = case f of
+    First f1  -> Fold2 (Other (First $ unwrap (trans f1)))
+    Second f1 -> Fold2 (Other (Second $ unwrap (trans f1)))
+    Both both -> Fold2 (Other (Both $ \f1 f2 -> both (dec f1) (dec f2)))
+    where 
+    dec = decoderx' decodeUtf8
+    trans = transduce1 (transducer dec) . Fold1 . Other
+    unwrap (Fold1 z) = unLift z
 
 {-| 
     Collect strict 'Text's into a lazy 'Text'.
