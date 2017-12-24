@@ -64,13 +64,20 @@ module Pipes.Transduce (
     ,   separated
     ,   combined
         -- * Utilities
+    ,   intoList
     ,   trip
     ,   tripx
+        -- * Re-exports
+    ,   runExceptT
+    ,   throwE
+    ,   next
     ) where
 
-import Control.Exception
-import Pipes 
-import Pipes.Transduce.Internal
+import           Control.Exception
+import qualified Control.Foldl as L
+import           Control.Monad.Trans.Except(runExceptT,throwE)
+import           Pipes(next)
+import           Pipes.Transduce.Internal
 
 {- $setup
 >>> :set -XOverloadedStrings
@@ -117,6 +124,8 @@ tripx = withFallibleCont' $ \producer -> do
         Left r -> return (Right ((),r))
         Right _ -> throwIO (AssertionFailed "tripx")
 
+intoList :: Fold1 b e [b]
+intoList = withFold L.list
 
 {- $foldl
  
