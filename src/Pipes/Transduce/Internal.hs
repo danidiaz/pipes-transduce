@@ -101,12 +101,12 @@ instance Bifunctor (Fold1 b) where
       Other o -> Other (bimap f g o))
 
 instance (S.Semigroup a) => S.Semigroup (Fold1 b e a) where
-     s1 <> s2 = (<>) <$> s1 <*> s2
+     s1 <> s2 = (S.<>) <$> s1 <*> s2
     
 instance (Monoid a) => Monoid (Fold1 b e a) where
    mempty = pure mempty
 #if !(MIN_VERSION_base(4,11,0))
-   mappend = (<>) <$> s1 <*> s2
+   mappend = (S.<>)
 #endif
 
 nonexhaustiveCont :: Fold1_ b e a -> Producer b IO () -> IO (Either e a)
@@ -505,12 +505,12 @@ instance Applicative (Fold2_ b1 b2 e) where
     Both fs <*> Second as = (\f ((),x) -> f x) <$> Both fs <*> separated_ (pure ()) as 
 
 instance (S.Semigroup a) => S.Semigroup (Fold2 b1 b2 e a) where
-     s1 <> s2 = (<>) <$> s1 <*> s2
+     s1 <> s2 = (S.<>) <$> s1 <*> s2
 
 instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
    mempty = pure mempty
 #if !(MIN_VERSION_base(4,11,0))
-   mappend s1 s2 = (<>) <$> s1 <*> s2
+   mappend = (S.<>)
 #endif
 
 {-| 
