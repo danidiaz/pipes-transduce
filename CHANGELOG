@@ -1,3 +1,10 @@
+0.4.2.0
+=======
+- Semigroup instance for Fold.
+- New dependency on the "streaming" package.
+- Added withStreamCont, withStreamCont', withFallibleStreamCont,
+  withFallibleStreamCont'. 
+
 0.4.1.0
 =======
 

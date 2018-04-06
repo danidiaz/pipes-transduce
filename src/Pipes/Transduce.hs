@@ -36,6 +36,12 @@ module Pipes.Transduce (
     ,   withCont' 
     ,   withFallibleCont 
     ,   withFallibleCont'  
+        -- *** From Stream-accepting continuations
+        -- $streamingcontinuations
+    ,   withStreamCont 
+    ,   withStreamCont' 
+    ,   withFallibleStreamCont 
+    ,   withFallibleStreamCont'  
         -- * Fold transducers
     ,   Transducer
     ,   Delimited
@@ -149,3 +155,9 @@ intoList = withFold L.list
     function that consumes a 'Producer'.
 -}
 
+{- $streamingcontinuations
+ 
+    Variants of the continuation-accepting functions where the continuations
+    consume 'Stream's from the @streaming@ package, instead of 'Producer's from
+    @pipes@.
+-}

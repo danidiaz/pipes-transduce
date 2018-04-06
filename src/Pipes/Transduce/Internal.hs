@@ -6,10 +6,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE CPP #-}
 
 module Pipes.Transduce.Internal where
 
 import Data.Bifunctor
+import qualified Data.Semigroup as S
 import Data.Monoid hiding (First)
 import Data.Void
 import Data.Foldable
@@ -30,6 +32,9 @@ import qualified Pipes.Group as Pipes
 import qualified Pipes.Parse
 import Pipes.Concurrent
 import Pipes.Safe (SafeT, runSafeT)
+import Streaming (Stream,Of)
+import qualified Streaming as Streaming
+import qualified Streaming.Prelude as Streaming
 
 import Lens.Micro
 
@@ -98,9 +103,14 @@ instance Bifunctor (Fold1 b) where
       Pure a -> Pure (g a)
       Other o -> Other (bimap f g o))
 
+instance (S.Semigroup a) => S.Semigroup (Fold1 b e a) where
+     s1 <> s2 = (<>) <$> s1 <*> s2
+    
 instance (Monoid a) => Monoid (Fold1 b e a) where
    mempty = pure mempty
-   mappend s1 s2 = (<>) <$> s1 <*> s2
+#if !(MIN_VERSION_base(4,11,0))
+   mappend = (<>) <$> s1 <*> s2
+#endif
 
 nonexhaustiveCont :: Fold1_ b e a -> Producer b IO () -> IO (Either e a)
 nonexhaustiveCont (TrueFold e) = \producer -> runExceptT (Foldl.impurely Pipes.foldM e (hoist lift producer))
@@ -123,7 +133,6 @@ exhaustiveCont s = case s of
                 (runEffect (producer >-> (toOutput outbox *> Pipes.drain)) 
                 `finally` atomically seal))
 
-
 withFallibleCont 
     :: (Producer b IO () -> IO (Either e a)) -- ^
     -> Fold1 b e a 
@@ -143,6 +152,30 @@ withCont'
     :: (forall r. Producer b IO r -> IO (a,r)) -- ^
     -> Fold1 b e a -- ^
 withCont' aFold = withFallibleCont' $ fmap (fmap pure) aFold
+
+withStreamCont 
+    :: (Stream (Of b) IO () -> IO a) -- ^
+    -> Fold1 b e a
+withStreamCont c = withCont $ c . Streaming.unfoldr Pipes.next   
+
+-- | This function preserves the return type of the 'Stream' and can be more
+-- efficient than its counterpart.
+withStreamCont' 
+    :: (forall r. Stream (Of b) IO r -> IO (a, r)) -- ^
+    -> Fold1 b e a
+withStreamCont' c = withCont' $ c . Streaming.unfoldr Pipes.next   
+
+withFallibleStreamCont 
+    :: (Stream (Of b) IO () -> IO (Either e a)) -- ^
+    -> Fold1 b e a
+withFallibleStreamCont c = withFallibleCont $ c . Streaming.unfoldr Pipes.next   
+
+-- | This function preserves the return type of the 'Stream' and can be more
+-- efficient than its counterpart.
+withFallibleStreamCont' 
+    :: (forall r. Stream (Of b) IO r -> IO (Either e (a, r))) -- ^
+    -> Fold1 b e a
+withFallibleStreamCont' c = withFallibleCont' $ c . Streaming.unfoldr Pipes.next   
 
 withFold :: Foldl.Fold b a -> Fold1 b e a 
 withFold aFold = Fold1 (Other (TrueFold (Foldl.generalize aFold)))
@@ -232,7 +265,7 @@ fold1Fallibly (Fold1 (unLift -> s)) = exhaustiveCont s
 fold1 :: Fold1 b Void a -> Producer b IO r -> IO (a,r)
 fold1 (Fold1 (unLift -> s)) = liftM (either absurd id) . exhaustiveCont s
 
-{-| A transformation that takes the inputs of a 'Fold1' from type @a@ to type @b@.		
+{-| A transformation that takes the inputs of a 'Fold1' from type @a@ to type @b@.      
 
     Optionally, the transformation may delimit groups of elements in the
     stream. In that case the phantom type @x@ will be 'Delimited'. Otherwise, it will be
@@ -293,7 +326,7 @@ fallibleTransducer
     -> Transducer Continuous b e a  -- ^
 fallibleTransducer = PE
 
-{-| Plug splitting functions from @pipes-group@ here.		
+{-| Plug splitting functions from @pipes-group@ here.       
 
 -}
 delimit 
@@ -308,7 +341,7 @@ delimit f t = case t of
     S g -> S (f . Pipes.concats . g)
     SE g -> SE (f . Pipes.concats . g)
 
-{-| Apply a 'Transducer' to a 'Fold1'.		
+{-| Apply a 'Transducer' to a 'Fold1'.      
 
 -}
 transduce1 :: Transducer Continuous b e a -> Fold1 a e r -> Fold1 b e r
@@ -341,7 +374,7 @@ transduce1 (PE f) (Fold1 (exhaustiveCont . unLift -> s)) = do
 transduce1 (S f) somefold = transduce1 (P (Pipes.concats . f)) somefold
 transduce1 (SE f) somefold = transduce1 (PE (Pipes.concats . f)) somefold
 
-{-| Tweak each of the groups delimited by a 'Transducer'.		
+{-| Tweak each of the groups delimited by a 'Transducer'.       
 
 -}
 groups 
@@ -474,9 +507,14 @@ instance Applicative (Fold2_ b1 b2 e) where
     Second fs <*> Both as = (\((),f) x -> f x) <$> separated_ (pure ()) fs <*> Both as 
     Both fs <*> Second as = (\f ((),x) -> f x) <$> Both fs <*> separated_ (pure ()) as 
 
+instance (S.Semigroup a) => S.Semigroup (Fold2 b1 b2 e a) where
+     s1 <> s2 = (<>) <$> s1 <*> s2
+
 instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
    mempty = pure mempty
+#if !(MIN_VERSION_base(4,11,0))
    mappend s1 s2 = (<>) <$> s1 <*> s2
+#endif
 
 {-| 
     Run a 'Fold2'.
