@@ -1,3 +1,7 @@
+0.4.3.0
+=======
+- Bumped base dependency.
+
 0.4.2.0
 =======
 - Semigroup instance for Fold.

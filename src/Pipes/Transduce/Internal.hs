@@ -12,10 +12,8 @@ module Pipes.Transduce.Internal where
 
 import Data.Bifunctor
 import qualified Data.Semigroup as S
-import Data.Monoid hiding (First)
 import Data.Void
 import Data.Foldable
-import Control.Applicative
 import Control.Applicative.Lift
 import Control.Monad
 import Control.Monad.Trans.Except
@@ -33,7 +31,6 @@ import qualified Pipes.Parse
 import Pipes.Concurrent
 import Pipes.Safe (SafeT, runSafeT)
 import Streaming (Stream,Of)
-import qualified Streaming as Streaming
 import qualified Streaming.Prelude as Streaming
 
 import Lens.Micro
