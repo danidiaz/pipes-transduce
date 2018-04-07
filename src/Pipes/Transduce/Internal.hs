@@ -102,8 +102,12 @@ instance Bifunctor (Fold1 b) where
 
 instance (S.Semigroup a) => S.Semigroup (Fold1 b e a) where
      s1 <> s2 = (S.<>) <$> s1 <*> s2
-    
+
+#if !(MIN_VERSION_base(4,11,0))
+instance (Monoid a,S.Semigroup a) => Monoid (Fold1 b e a) where
+#else
 instance (Monoid a) => Monoid (Fold1 b e a) where
+#endif
    mempty = pure mempty
 #if !(MIN_VERSION_base(4,11,0))
    mappend = (S.<>)
@@ -507,7 +511,11 @@ instance Applicative (Fold2_ b1 b2 e) where
 instance (S.Semigroup a) => S.Semigroup (Fold2 b1 b2 e a) where
      s1 <> s2 = (S.<>) <$> s1 <*> s2
 
+#if !(MIN_VERSION_base(4,11,0))
+instance (Monoid a,S.Semigroup a) => Monoid (Fold2 b1 b2 e a) where
+#else
 instance (Monoid a) => Monoid (Fold2 b1 b2 e a) where
+#endif
    mempty = pure mempty
 #if !(MIN_VERSION_base(4,11,0))
    mappend = (S.<>)
