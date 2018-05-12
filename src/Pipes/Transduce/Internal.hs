@@ -349,7 +349,7 @@ transduce1 :: Transducer Continuous b e a -> Fold1 a e r -> Fold1 b e r
 transduce1 (M _) (Fold1 (Pure x)) = 
     Fold1 (Pure x)
 transduce1 (M f) (Fold1 (Other s)) = (Fold1 (Other (case s of
-    TrueFold x -> TrueFold (Foldl.premapM f x)
+    TrueFold x -> TrueFold (Foldl.premapM (return . f) x)
     ExhaustiveCont x -> ExhaustiveCont (\producer -> x (producer >-> Pipes.map f))
     NonexhaustiveCont x -> NonexhaustiveCont (\producer -> x (producer >-> Pipes.map f)))))
 transduce1 (F _) (Fold1 (Pure x)) = 

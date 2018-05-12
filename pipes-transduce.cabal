@@ -1,5 +1,5 @@
 Name: pipes-transduce
-Version: 0.4.3.2
+Version: 0.4.4.0
 Cabal-Version: >=1.8.0.2
 Build-Type: Simple
 License: BSD3
@@ -28,7 +28,7 @@ Library
       , text          >= 0.11.2.0          
       , transformers  >= 0.4.0.0           
       , bifunctors    >= 5.0               
-      , foldl         >= 1.2.0             
+      , foldl         >= 1.4.0             
       , free          >= 4.0               
       , pipes         == 4.*               
       , pipes-concurrency   >= 2.0.2       
@@ -59,7 +59,7 @@ test-suite doctests
       , free          >= 4
       , pipes         >= 4
       , doctest       >= 0.10.1
-      , foldl         >= 1.1 
+      , foldl         >= 1.4 
 
 test-suite tests
   type:           exitcode-stdio-1.0

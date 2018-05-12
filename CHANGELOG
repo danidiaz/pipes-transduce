@@ -1,3 +1,7 @@
+0.4.4.0
+=======
+- Bumped lower bound for foldl.
+
 0.4.3.0
 =======
 - Bumped base dependency.
